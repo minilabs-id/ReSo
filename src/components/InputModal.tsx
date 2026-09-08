@@ -430,19 +430,21 @@ export function InputModal({
         const merged: Record<string, unknown> = { ...updateData };
         if (!igChanged && latest?.igRawText !== undefined) {
           merged.igRawText = latest.igRawText;
-          merged.igEngagedEmployeeIds = latest.igEngagedEmployeeIds;
-          merged.igLinks = latest.igLinks;
+          if (latest.igEngagedEmployeeIds !== undefined) merged.igEngagedEmployeeIds = latest.igEngagedEmployeeIds;
+          if (latest.igLinks !== undefined) merged.igLinks = latest.igLinks;
         }
         if (!fbChanged && latest?.fbRawText !== undefined) {
           merged.fbRawText = latest.fbRawText;
-          merged.fbEngagedEmployeeIds = latest.fbEngagedEmployeeIds;
-          merged.fbLinks = latest.fbLinks;
+          if (latest.fbEngagedEmployeeIds !== undefined) merged.fbEngagedEmployeeIds = latest.fbEngagedEmployeeIds;
+          if (latest.fbLinks !== undefined) merged.fbLinks = latest.fbLinks;
         }
         if (!tiktokChanged && latest?.tiktokRawText !== undefined) {
           merged.tiktokRawText = latest.tiktokRawText;
-          merged.tiktokEngagedEmployeeIds = latest.tiktokEngagedEmployeeIds;
-          merged.tiktokLinks = latest.tiktokLinks;
+          if (latest.tiktokEngagedEmployeeIds !== undefined) merged.tiktokEngagedEmployeeIds = latest.tiktokEngagedEmployeeIds;
+          if (latest.tiktokLinks !== undefined) merged.tiktokLinks = latest.tiktokLinks;
         }
+        // Firestore menolak undefined — sanitasi terakhir sebelum set
+        for (const k of Object.keys(merged)) if (merged[k] === undefined) delete merged[k];
         tx.set(docRef, merged, { merge: true });
       });
 
