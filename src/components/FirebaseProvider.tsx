@@ -3,6 +3,7 @@ import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth, userDb } from '../lib/firebase';
 import { doc, setDoc, getDoc, serverTimestamp, type Firestore } from 'firebase/firestore';
 import { fetchWithTimeout } from '../lib/fetch-with-timeout';
+import { syncSessionToMain, clearSessionFromMain } from '../lib/reso-bridge';
 
 interface AuthContextType {
   user: User | null;
@@ -100,6 +101,10 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setUser(user);
         setError(null);
         setLoading(false);
+        // Di Electron: titip idToken (bukan refresh token) ke main process.
+        void user.getIdToken().then((idToken) =>
+          syncSessionToMain({ idToken, uid: user.uid, email: user.email ?? null })
+        );
         void runProvision(user).then((provErr) => {
           if (!cancelled) setProvisionError(provErr);
         });
@@ -133,6 +138,7 @@ export const FirebaseProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       } else {
         if (cancelled) return;
         setUser(null);
+        void clearSessionFromMain();
         // Do NOT clear error here — access-denied message must survive signOut callback
         setLoading(false);
       }

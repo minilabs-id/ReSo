@@ -2,6 +2,8 @@ node_modules/
 build/
 dist/
 coverage/
+out/
+release/
 .DS_Store
 *.log
 .env*
@@ -10,16 +12,8 @@ coverage/
 # Vercel CLI local state
 .vercel
 
-# Extension dist diizinkan (built extension)
-!extension/dist/
-
-# CRX packaging output (berisi kunci rahasia key.pem — JANGAN di-commit)
-extension/dist-crx/
-extension/package-lock.json
-
-# .crx/.zip publik diizinkan (extension terpaket — bukan rahasia, perlu ter-deploy)
-!public/reso-extension.crx
-!public/reso-extension.zip
+# Artifak Chrome extension (dihapus — arsip di branch legacy-extension)
+extension/
 
 # Firebase CLI local state
 .freebuff/

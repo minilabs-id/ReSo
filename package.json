@@ -1,24 +1,27 @@
 {
   "name": "reso",
   "private": true,
-  "version": "1.0.84",
+  "version": "1.0.86",
   "type": "module",
+  "main": "out/main/index.js",
   "scripts": {
     "dev": "vite",
+    "dev:desktop": "electron-vite dev",
     "build": "tsc --noEmit && vite build",
+    "build:desktop": "electron-vite build",
+    "start:desktop": "electron-vite preview",
+    "dist:win": "npm run build:desktop && electron-builder --win nsis",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
+    "typecheck:desktop": "tsc --noEmit -p electron/tsconfig.json",
     "test:matching": "tsx src/lib/matching.test.ts",
     "test:stress": "tsx src/lib/extreme-stress.test.ts",
     "test:api": "tsx src/lib/engagement-api.test.ts && tsx src/lib/engagement-api.handler.test.ts",
     "test:net": "tsx src/lib/fetch-with-timeout.test.ts",
+    "test:shared": "tsx src/shared/index.test.ts && tsx src/shared/run-state.test.ts && tsx electron/store/settings-schema.test.ts && tsx electron/store/state-schema.test.ts",
     "deploy:rules": "firebase deploy --only firestore:rules",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "ext:build": "cd extension && npm run build",
-    "ext:test": "cd extension && npm test",
-    "ext:zip": "cd extension && npm run zip",
-    "ext:check": "cd extension && npm run check",
-    "test": "npm run test:matching && npm run test:api && npm run test:net && npm run test:handoff && npm run ext:test",
+    "test": "npm run test:shared && npm run test:matching && npm run test:api && npm run test:net && npm run test:handoff",
     "test:handoff": "tsx src/lib/token-handoff.test.ts"
   },
   "dependencies": {
@@ -28,6 +31,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "electron-store": "^10.0.0",
     "firebase": "^12.11.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
@@ -51,23 +55,12 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.21",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.1.0",
     "sharp": "^0.35.3",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2"
   }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-

@@ -1,0 +1,21 @@
+appId: fun.sekretariat.reso
+productName: ReSo
+directories:
+  output: release
+  buildResources: assets
+files:
+  - out/**/*
+  - package.json
+  - assets/**/*
+asar: true
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: assets/icons/icon128.png
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ReSoSetup-${version}.${ext}

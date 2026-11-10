@@ -38,6 +38,7 @@ import { APP_VERSION } from '../lib/version';
 import { DashboardTab } from './tabs/DashboardTab';
 import { InputModal } from './InputModal';
 import { SettingsTab } from './tabs/SettingsTab';
+import ScraperTab from './tabs/ScraperTab';
 import { DailyReportView } from './reports/DailyReportView';
 import { WeeklyReportView } from './reports/WeeklyReportView';
 import { MonthlyReportView } from './reports/MonthlyReportView';
@@ -1409,6 +1410,12 @@ export default function EngagementDashboard() {
               label="Data Pegawai" 
             />
             <NavItem 
+              active={activeTab === 'scraper'} 
+              onClick={() => { setActiveTab('scraper'); setIsSidebarOpen(false); }} 
+              icon={<Users2 size={20} />} 
+              label="Ambil Nama" 
+            />
+            <NavItem 
               active={activeTab === 'settings'} 
               onClick={() => { setActiveTab('settings'); setIsSidebarOpen(false); }} 
               icon={<Settings size={20} />} 
@@ -1884,6 +1891,12 @@ export default function EngagementDashboard() {
                   <EmployeeManager employees={employees} />
                 </React.Suspense>
               </motion.div>
+            )}
+
+            {activeTab === 'scraper' && (
+              <React.Suspense fallback={null}>
+                <ScraperTab />
+              </React.Suspense>
             )}
 
             {activeTab === 'settings' && (
