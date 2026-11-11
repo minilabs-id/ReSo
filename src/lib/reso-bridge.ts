@@ -51,6 +51,63 @@ interface ResoSettingsBridge {
   reset: () => Promise<ResoSettings>
 }
 
+/** Bentuk payload data lokal (dipetakan dari src/shared/types di main). */
+export interface LocalEmployee {
+  id: string
+  name: string
+  nip: string
+  bidang?: string
+  igUsername?: string
+  igUsername2?: string
+  fbName?: string
+  fbName2?: string
+  tiktokName?: string
+  tiktokName2?: string
+  aliases?: string[]
+}
+
+export interface LocalDaily {
+  id: string
+  date: string
+  igRawText?: string
+  fbRawText?: string
+  tiktokRawText?: string
+  igEngagedEmployeeIds?: string[]
+  fbEngagedEmployeeIds?: string[]
+  tiktokEngagedEmployeeIds?: string[]
+  igLinks?: string[]
+  fbLinks?: string[]
+  tiktokLinks?: string[]
+  unmatchedNames?: { name: string; platform: 'ig' | 'fb' | 'tiktok' }[]
+  postedAt?: string[]
+}
+
+export interface LocalDbStats {
+  employees: number
+  days: number
+  path: string
+  schemaVersion: number
+}
+
+interface ResoDataBridge {
+  listEmployees: () => Promise<LocalEmployee[]>
+  upsertEmployee: (
+    employee: LocalEmployee
+  ) => Promise<{ ok: boolean; employee?: LocalEmployee; reason?: string }>
+  replaceEmployees: (
+    employees: LocalEmployee[]
+  ) => Promise<{ ok: boolean; employees?: LocalEmployee[]; reason?: string }>
+  deleteEmployee: (id: string) => Promise<{ ok: boolean }>
+  getDaily: (date: string) => Promise<LocalDaily | null>
+  listDailyRange: (from: string, to: string) => Promise<LocalDaily[]>
+  upsertDaily: (date: string, patch: Partial<LocalDaily>) => Promise<LocalDaily | null>
+  stats: () => Promise<LocalDbStats>
+  exportAll: () => Promise<{ employees: LocalEmployee[]; daily: LocalDaily[] }>
+  importAll: (
+    payload: { employees: LocalEmployee[]; daily: LocalDaily[] }
+  ) => Promise<{ ok: boolean; stats?: LocalDbStats; reason?: string }>
+}
+
 interface ResoAuthBridge {
   setSession: (session: ResoSession) => Promise<{ ok: boolean }>
   getSession: () => Promise<ResoSession | null>
@@ -64,6 +121,7 @@ declare global {
       auth: ResoAuthBridge
       app: { getMeta: () => Promise<ResoAppMeta> }
       settings: ResoSettingsBridge
+      data: ResoDataBridge
       scrape: {
         getState: (platform: string) => Promise<NameState | null>
         getAll: () => Promise<Record<string, NameState>>
@@ -132,6 +190,112 @@ export async function resetSettings(): Promise<ResoSettings | null> {
     return await window.reso!.settings.reset()
   } catch (err) {
     console.warn('resetSettings gagal:', err)
+    return null
+  }
+}
+
+// ===================== Data lokal (SQLite, pengganti Firestore) =====================
+
+//
+// Semua fungsi mengembalikan nilai aman (array kosong / null) saat berjalan di
+// web atau saat main menolak payload — pemanggil tidak perlu menangani throw.
+
+export async function listEmployees(): Promise<LocalEmployee[]> {
+  if (!isElectron) return []
+  try {
+    return (await window.reso!.data.listEmployees()) ?? []
+  } catch (err) {
+    console.warn('listEmployees gagal:', err)
+    return []
+  }
+}
+
+export async function upsertEmployee(
+  employee: LocalEmployee
+): Promise<{ ok: boolean; employee?: LocalEmployee; reason?: string }> {
+  if (!isElectron) return { ok: false, reason: 'no-electron' }
+  try {
+    return await window.reso!.data.upsertEmployee(employee)
+  } catch (err) {
+    console.warn('upsertEmployee gagal:', err)
+    return { ok: false, reason: 'ipc-error' }
+  }
+}
+
+export async function replaceEmployees(
+  employees: LocalEmployee[]
+): Promise<{ ok: boolean; employees?: LocalEmployee[]; reason?: string }> {
+  if (!isElectron) return { ok: false, reason: 'no-electron' }
+  try {
+    return await window.reso!.data.replaceEmployees(employees)
+  } catch (err) {
+    console.warn('replaceEmployees gagal:', err)
+    return { ok: false, reason: 'ipc-error' }
+  }
+}
+
+export async function deleteEmployee(id: string): Promise<boolean> {
+  if (!isElectron) return false
+  try {
+    return (await window.reso!.data.deleteEmployee(id))?.ok === true
+  } catch (err) {
+    console.warn('deleteEmployee gagal:', err)
+    return false
+  }
+}
+
+export async function getDaily(date: string): Promise<LocalDaily | null> {
+  if (!isElectron) return null
+  try {
+    return await window.reso!.data.getDaily(date)
+  } catch (err) {
+    console.warn('getDaily gagal:', err)
+    return null
+  }
+}
+
+export async function listDailyRange(from: string, to: string): Promise<LocalDaily[]> {
+  if (!isElectron) return []
+  try {
+    return (await window.reso!.data.listDailyRange(from, to)) ?? []
+  } catch (err) {
+    console.warn('listDailyRange gagal:', err)
+    return []
+  }
+}
+
+export async function upsertDaily(
+  date: string,
+  patch: Partial<LocalDaily>
+): Promise<LocalDaily | null> {
+  if (!isElectron) return null
+  try {
+    return await window.reso!.data.upsertDaily(date, patch)
+  } catch (err) {
+    console.warn('upsertDaily gagal:', err)
+    return null
+  }
+}
+
+export async function dbStats(): Promise<LocalDbStats | null> {
+  if (!isElectron) return null
+  try {
+    return await window.reso!.data.stats()
+  } catch (err) {
+    console.warn('dbStats gagal:', err)
+    return null
+  }
+}
+
+export async function exportAll(): Promise<{
+  employees: LocalEmployee[]
+  daily: LocalDaily[]
+} | null> {
+  if (!isElectron) return null
+  try {
+    return await window.reso!.data.exportAll()
+  } catch (err) {
+    console.warn('exportAll gagal:', err)
     return null
   }
 }

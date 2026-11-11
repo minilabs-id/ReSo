@@ -19,6 +19,16 @@ export const IPC = {
   scrapeClearNames: 'reso:scrape:clear-names',
   scrapeApplyEvent: 'reso:scrape:apply-event',
   scrapeStateChanged: 'reso:scrape:state-changed',
+  dbListEmployees: 'reso:db:list-employees',
+  dbUpsertEmployee: 'reso:db:upsert-employee',
+  dbReplaceEmployees: 'reso:db:replace-employees',
+  dbDeleteEmployee: 'reso:db:delete-employee',
+  dbGetDaily: 'reso:db:get-daily',
+  dbListDailyRange: 'reso:db:list-daily-range',
+  dbUpsertDaily: 'reso:db:upsert-daily',
+  dbStats: 'reso:db:stats',
+  dbExportAll: 'reso:db:export-all',
+  dbImportAll: 'reso:db:import-all',
 } as const
 
 export { type Platform } from '../../src/shared/types'
@@ -40,8 +50,101 @@ export interface AppMeta {
   electron: boolean
 }
 
-function isRecord(v: unknown): v is Record<string, unknown> {
+export function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null
+}
+
+// ===================== Validasi payload data (renderer → main) =====================
+
+const MAX_TEXT = 4000
+
+function str(v: unknown): string {
+  return typeof v === 'string' ? v : ''
+}
+
+function optStr(v: unknown): string | undefined {
+  const s = str(v).trim()
+  return s ? s.slice(0, MAX_TEXT) : undefined
+}
+
+function strArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return []
+  return v.filter((x): x is string => typeof x === 'string' && x.length <= MAX_TEXT)
+}
+
+/** Validasi satu pegawai dari renderer. `null` = payload tidak layak disimpan. */
+export function parseEmployee(v: unknown): import('../../src/shared/types').Employee | null {
+  if (!isRecord(v)) return null
+  const id = str(v.id).trim()
+  const name = str(v.name).trim()
+  if (!id || id.length > 128 || !name) return null
+  const nip = str(v.nip).trim().slice(0, 64)
+  return {
+    id,
+    name: name.slice(0, MAX_TEXT),
+    nip,
+    bidang: optStr(v.bidang),
+    igUsername: optStr(v.igUsername),
+    igUsername2: optStr(v.igUsername2),
+    fbName: optStr(v.fbName),
+    fbName2: optStr(v.fbName2),
+    tiktokName: optStr(v.tiktokName),
+    tiktokName2: optStr(v.tiktokName2),
+    aliases: strArray(v.aliases),
+  }
+}
+
+export function parseEmployeeList(v: unknown): import('../../src/shared/types').Employee[] | null {
+  if (!Array.isArray(v)) return null
+  if (v.length > 20000) return null
+  const out: import('../../src/shared/types').Employee[] = []
+  for (const item of v) {
+    const e = parseEmployee(item)
+    if (e) out.push(e)
+  }
+  return out
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
+
+/** Hanya YYYY-MM-DD yang masuk akal — mencegah path/nilai aneh di kolom PK. */
+export function parseDate(v: unknown): string | null {
+  const s = typeof v === 'string' ? v.trim() : ''
+  if (!DATE_RE.test(s)) return null
+  const ms = Date.parse(`${s}T00:00:00Z`)
+  if (!Number.isFinite(ms)) return null
+  return s
+}
+
+/** Patch rekap harian: hanya field domain yang dikenal & bertipe benar. */
+export function parseDailyPatch(v: unknown): Partial<import('../../src/shared/types').DailyEngagement> {
+  if (!isRecord(v)) return {}
+  const out: Record<string, unknown> = {}
+  for (const key of ['igRawText', 'fbRawText', 'tiktokRawText', 'autoFilledAt', 'verifiedAt']) {
+    if (key in v) out[key] = v[key] === null ? null : str(v[key])
+  }
+  for (const key of [
+    'igEngagedEmployeeIds',
+    'fbEngagedEmployeeIds',
+    'tiktokEngagedEmployeeIds',
+    'igLinks',
+    'fbLinks',
+    'tiktokLinks',
+    'postedAt',
+  ]) {
+    if (key in v) out[key] = strArray(v[key])
+  }
+  if ('unmatchedNames' in v && Array.isArray(v.unmatchedNames)) {
+    out.unmatchedNames = (v.unmatchedNames as unknown[])
+      .filter(isRecord)
+      .map((u) => ({ name: str(u.name), platform: str(u.platform) }))
+      .filter((u) => u.name && (u.platform === 'ig' || u.platform === 'fb' || u.platform === 'tiktok'))
+  }
+  if ('autoFilledCount' in v) {
+    const n = v.autoFilledCount
+    out.autoFilledCount = typeof n === 'number' && Number.isFinite(n) ? Math.trunc(n) : null
+  }
+  return out as Partial<import('../../src/shared/types').DailyEngagement>
 }
 
 /** Validasi longgar tapi aman: hanya string non-kosong & email string/null. */

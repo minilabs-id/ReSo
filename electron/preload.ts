@@ -48,6 +48,22 @@ const api = {
       return () => ipcRenderer.removeListener(IPC.scrapeStateChanged, listener)
     },
   },
+
+  /** Data lokal (SQLite) — pengganti Firestore. Payload divalidasi di main. */
+  data: {
+    listEmployees: () => ipcRenderer.invoke(IPC.dbListEmployees),
+    upsertEmployee: (employee: unknown) => ipcRenderer.invoke(IPC.dbUpsertEmployee, employee),
+    replaceEmployees: (employees: unknown) => ipcRenderer.invoke(IPC.dbReplaceEmployees, employees),
+    deleteEmployee: (id: string) => ipcRenderer.invoke(IPC.dbDeleteEmployee, id),
+    getDaily: (date: string) => ipcRenderer.invoke(IPC.dbGetDaily, date),
+    listDailyRange: (from: string, to: string) =>
+      ipcRenderer.invoke(IPC.dbListDailyRange, from, to),
+    upsertDaily: (date: string, patch: unknown) =>
+      ipcRenderer.invoke(IPC.dbUpsertDaily, date, patch),
+    stats: () => ipcRenderer.invoke(IPC.dbStats),
+    exportAll: () => ipcRenderer.invoke(IPC.dbExportAll),
+    importAll: (payload: unknown) => ipcRenderer.invoke(IPC.dbImportAll, payload),
+  },
 }
 
 contextBridge.exposeInMainWorld('reso', api)

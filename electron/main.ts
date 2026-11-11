@@ -1,8 +1,9 @@
 import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import { join } from 'path'
-import { IPC, parseResoSession, isPlatform, type ResoSession } from './ipc/contracts'
+import { IPC, parseResoSession, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, type ResoSession } from './ipc/contracts'
 import { getSettings, setSettings, resetSettings } from './store/settings-store'
 import { runController } from './ipc/run-controller'
+import * as db from './db/database'
 
 /** Auth memory-only — idToken JANGAN ditulis ke disk (lihat contracts.ts). */
 let currentSession: ResoSession | null = null
@@ -135,6 +136,63 @@ function registerIpc(): void {
   ipcMain.handle(IPC.scrapeReset, (_event, platform: unknown) =>
     isPlatform(platform) ? runController.reset(platform) : null
   )
+
+  // Data lokal (SQLite). SQL hanya lewat prepared statement; payload divalidasi.
+  ipcMain.handle(IPC.dbListEmployees, () => db.listEmployees())
+  ipcMain.handle(IPC.dbUpsertEmployee, (_event, payload: unknown) => {
+    const emp = parseEmployee(payload)
+    if (!emp) return { ok: false as const, reason: 'invalid-employee' }
+    return { ok: true as const, employee: db.upsertEmployee(emp) }
+  })
+  ipcMain.handle(IPC.dbReplaceEmployees, (_event, payload: unknown) => {
+    const list = parseEmployeeList(payload)
+    if (!list) return { ok: false as const, reason: 'invalid-list' }
+    return { ok: true as const, employees: db.replaceAllEmployees(list) }
+  })
+  ipcMain.handle(IPC.dbDeleteEmployee, (_event, id: unknown) => {
+    const key = typeof id === 'string' ? id.trim() : ''
+    if (!key || key.length > 128) return { ok: false as const }
+    return { ok: db.deleteEmployee(key) }
+  })
+  ipcMain.handle(IPC.dbGetDaily, (_event, date: unknown) => {
+    const d = parseDate(date)
+    return d ? db.getDaily(d) : null
+  })
+  ipcMain.handle(IPC.dbListDailyRange, (_event, from: unknown, to: unknown) => {
+    const f = parseDate(from)
+    const t = parseDate(to)
+    if (!f || !t) return []
+    return db.listDailyRange(f, t)
+  })
+  ipcMain.handle(IPC.dbUpsertDaily, (_event, date: unknown, patch: unknown) => {
+    const d = parseDate(date)
+    if (!d) return null
+    return db.upsertDaily(d, parseDailyPatch(patch))
+  })
+  ipcMain.handle(IPC.dbStats, () => db.stats())
+  ipcMain.handle(IPC.dbExportAll, () => db.exportAll())
+  ipcMain.handle(IPC.dbImportAll, (_event, payload: unknown) => {
+    if (!isRecord(payload)) return { ok: false as const, reason: 'invalid-payload' }
+    const employees = parseEmployeeList(payload.employees)
+    if (!employees) return { ok: false as const, reason: 'invalid-employees' }
+    const daily = Array.isArray(payload.daily) ? payload.daily : []
+    const conn = db.openDb()
+    const tx = conn.transaction(() => {
+      db.replaceAllEmployees(employees)
+      for (const row of daily) {
+        if (!isRecord(row)) continue
+        const date = parseDate(row.date ?? row.id)
+        if (!date) continue
+        db.upsertDaily(date, parseDailyPatch(row))
+      }
+    })
+    tx()
+    return { ok: true as const, stats: db.stats() }
+  })
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null
 }
 
 function hardenSession(): void {
@@ -155,6 +213,15 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+// Tutup SQLite rapi (WAL ter-flush) sebelum proses keluar.
+app.on('will-quit', () => {
+  try {
+    db.closeDb()
+  } catch {
+    /* sudah tertutup */
+  }
 })
 
 // Buka tautan eksternal di browser OS, bukan di dalam app. Pengecualian:
