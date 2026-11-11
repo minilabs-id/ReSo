@@ -2,7 +2,7 @@
 
 > **Tujuan dokumen ini:** Menjadi sumber kebenaran (source of truth) untuk tujuan, ruang lingkup, dan batasan proyek ReSo. Setiap pengembangan lanjutan — termasuk oleh AI agent — **wajib** selaras dengan dokumen ini. Jika fitur baru bertentangan dengan tujuan di sini, **tujuan di sini yang menang**.
 
-**Status:** Tervalidasi pemilik proyek (keputusan produk dikunci — lihat §0).
+**Status:** Tervalidasi pemilik proyek. **Revisi 2026-11-11**: keputusan #10–#12 (offline total, DB lokal, scraping in-app) ditambahkan atas persetujuan pemilik proyek dan **menimpa** #3 & #8. Seluruh dokumen ini wajib dibaca ulang dengan kacamata offline: setiap penyebutan Firebase, login, `/api/*`, Vercel, atau multi-tenant adalah **warisan versi web** dan bukan lagi arsitektur yang berlaku.
 
 ---
 
@@ -14,19 +14,22 @@ Disepakati pemilik proyek. AI agent **tidak boleh** menginterpretasi ulang poin-
 |---|-----------|--------|
 | 1 | **Pengguna utama = operator/admin**, bukan setiap pegawai login untuk cek skor sendiri | Terkunci |
 | 2 | **Engagement = kehadiran di daftar interaksi** (biner per platform/hari). App untuk merekap pegawai yang melakukan engagement ke **sosmed lembaga** | Terkunci |
-| 3 | **Konteks organisasi = instansi/lembaga (multi-tenant)** | Terkunci |
+| 3 | **Konteks organisasi = instansi/lembaga (multi-tenant)** | Digantikan #10 |
 | 4 | **TikTok tetap platform inti** meski input masih manual (otomasi TikTok sulit / belum andal) | Terkunci |
 | 5 | **Window & reminder 15:00 / 14:45 WIB** adalah aturan operasional resmi, bukan temporary hack | Terkunci |
 | 6 | **Arah dev: penyempurnaan** (akurasi, stabilitas, otomasi yang sudah ada) — **bukan** fitur besar baru / rombak cara kerja | Terkunci |
 | 7 | **Fitur & workflow saat ini sudah ideal** untuk kerja operator — pertahankan perilaku; boleh perbaiki kualitas di baliknya | Terkunci |
-| 8 | **Deploy: Vercel free (`*.vercel.app`), full gratis** | Terkunci |
+| 8 | ~~**Deploy: Vercel free (`*.vercel.app`), full gratis**~~ → **DIBATALKAN** oleh keputusan #10 | Batal |
 | 9 | **Recalculate jarang dipakai** — prioritas rendah; jalur utama = save rekap harian + matching client | Terkunci |
+| 10 | **Aplikasi berjalan OFFLINE TOTAL**: tanpa login, tanpa Firebase/Firestore, tanpa server. Data disimpan **lokal** di mesin operator (SQLite). Distribusi = installer Electron Windows | Terkunci (menimpa #3 & #8) |
+| 11 | **Konsekuensi #10 yang disetujui**: multi-tenant antar-instansi **hilang** — seluruh data milik satu mesin operator, tidak ada akses dari perangkat/instansi lain. Web Vercel `reso.sekretariat.fun` **ditinggalkan** sebagai produk | Terkunci |
+| 12 | **Scraping dijalankan aplikasi sendiri** (Chromium bawaan Electron + `WebContentsView`), bukan ekstensi Chrome. Ekstensi Chrome resmi **pensiun** | Terkunci |
 
 ---
 
 ## 1. Ringkasan satu kalimat
 
-**ReSo** adalah aplikasi web rekap engagement pegawai ke media sosial lembaga (Instagram, Facebook, TikTok) yang dirancang untuk berbagai instansi/organisasi (multi-tenant) — dioperasikan oleh **admin/operator**, bukan self-service pegawai.
+**ReSo** adalah aplikasi **desktop offline** (Electron, Windows) untuk merekap engagement pegawai ke media sosial lembaga (Instagram, Facebook, TikTok). Seluruh data tersimpan lokal di mesin operator; dioperasikan oleh **admin/operator**, bukan self-service pegawai.
 
 ---
 
@@ -38,7 +41,7 @@ Disepakati pemilik proyek. AI agent **tidak boleh** menginterpretasi ulang poin-
 |--------|------------|
 | **Nama** | ReSo — *Rekap Engagement Sosmed* |
 | **Jenis** | Internal ops tool / dashboard rekapitulasi (bukan produk publik) |
-| **Konteks organisasi** | **Diskominfo** (disepakati) |
+| **Konteks organisasi** | Satu instansi (Diskominfo) — **satu instalasi = satu operator** (lihat #10/#11) |
 | **Masalah yang diselesaikan** | Sulitnya rekap manual “siapa pegawai sudah engage di postingan resmi lembaga hari ini” untuk banyak pegawai & multi-platform |
 | **Pengguna utama** | **Admin/operator internal** yang berwenang (bukan end-user seluruh pegawai) |
 | **Objek yang direkap** | Pegawai yang melakukan engagement ke **sosmed lembaga** |
@@ -95,8 +98,8 @@ Bukan vanity metrics (DAU publik), melainkan:
 |---------|--------|
 | **Employee** | Master pegawai yang dimonitor: `name`, `nip`, `bidang`, handle IG/FB/TikTok (masing-masing bisa 2 akun) |
 | **DailyEngagement** | Rekap per tanggal: raw text per platform, daftar employee ID yang match, link postingan |
-| **Admin** | Marker `dinas/{uid}/admins/{uid}` (auto-provision saat login, open registration) |
-| **SystemSetting** | Konfigurasi global (logo app, Meta API token, dll.) |
+| **Admin** | Operator tunggal (satu instalasi satu orang). Tidak ada tabel admin/login — lihat #10 |
+| **SystemSetting** | Konfigurasi global (logo app, Meta API token, dll.) — disimpan lokal (tabel `settings`) |
 
 ### 4.2 Definisi “engagement” di ReSo
 
@@ -157,9 +160,8 @@ Gunakan daftar ini sebagai **peta fitur resmi saat ini**. Fitur baru idealnya me
 
 ### 5.1 Autentikasi & otorisasi
 
-- Login **Google** (Firebase Auth).
-- **Open registration**: setiap akun Google terverifikasi yang login = 1 dinas; `/api/provision` menulis marker `dinas/{uid}/admins/{uid}`.
-- Email harus **verified** (aturan security Firestore).
+- **Tidak ada login.** Aplikasi dibuka langsung ke dashboard (keputusan #10).
+- Akses dibatasi secara fisik: aplikasi hanya terpasang di mesin operator berwenang.
 - Copy UI: *Internal Use Only*.
 
 ### 5.2 Navigasi / modul UI
@@ -172,11 +174,12 @@ Gunakan daftar ini sebagai **peta fitur resmi saat ini**. Fitur baru idealnya me
 | **Laporan Mingguan** | Skor per pegawai dalam seminggu; rate per bidang; top/bottom; sort nama/bidang; export |
 | **Laporan Bulanan** | Skor bulanan + breakdown % per platform; sort rank/bidang/nama; export |
 | **Data Pegawai** | CRUD pegawai; search/sort; import Excel/CSV; export; template Excel |
-| **Pengaturan** | Simpan token Meta API; recalculate data; download ekstensi; info dinas |
+| **Ambil Nama** | Scraper in-app (Chromium bawaan): TikTok/FB/IG; hasil masuk ke rekap harian |
+| **Pengaturan** | Simpan token Meta API; recalculate data; preferensi scraper; info aplikasi & lokasi database lokal |
 
 ### 5.3 Integrasi Meta (Facebook Graph API)
 
-- Token disimpan di Firestore `settings/meta_api`.
+- Token disimpan **lokal** (tabel `settings`, mesin operator) — bukan Firestore.
 - Menarik post FB + IG dalam window 15:00 H−1 → 15:00 D.
 - IG: tarik **komentar (username)** ke raw text + link post.
 - FB: karena batasan privasi API, fokusnya **link post** (bukan full list commenter setara IG).
@@ -190,14 +193,16 @@ Gunakan daftar ini sebagai **peta fitur resmi saat ini**. Fitur baru idealnya me
 
 ### 5.5 Backend
 
-- **Vercel Functions** (`api/`): `POST /api/engagement` (jalur tulis ekstensi), `POST /api/provision` (bootstrap dinas), `GET /api/health`.
-- Tidak ada Express server; semua operasi pakai token operator + REST Firestore.
+- **Tidak ada backend/server.** Seluruh operasi berjalan di main process Electron.
+- Layanan lokal (IPC, bukan HTTP): `employees`, `daily`, `settings`, `scrape`.
+- `api/` versi web lama dipertahankan hanya sebagai arsip — bukan bagian aplikasi.
 
 ### 5.6 Stack teknis (faktual)
 
-- React 19 + TypeScript + Vite
+- React 19 + TypeScript + Vite (renderer)
+- Electron (main + preload, contextIsolation, sandbox) + electron-vite
 - Tailwind CSS + komponen UI (shadcn/base-ui style)
-- Firebase Auth + Firestore (proyek `reso-id`, satu DB `(default)`, subtree `dinas/{uid}`)
+- **SQLite lokal** (`better-sqlite3`) sebagai database tunggal; `electron-store` untuk preferensi
 - Recharts, xlsx, papaparse, jspdf(+autotable), modern-screenshot, motion
 
 ---
@@ -208,7 +213,7 @@ Gunakan daftar ini sebagai **peta fitur resmi saat ini**. Fitur baru idealnya me
 
 1. **Fokus rekap engagement pegawai multi-platform** — setiap PR/fitur harus menjawab: *“ini membantu rekap/monitor/laporkan engagement sosmed pegawai?”*
 2. **Model data harian per tanggal** sebagai unit rekap utama.
-3. **Akses internal terbatas** — jangan buka publik tanpa auth yang setara atau lebih ketat.
+3. **Akses internal terbatas** — aplikasi hanya di mesin operator berwenang; jangan buka akses jaringan/remote tanpa desain keamanan baru.
 4. **Timezone operasional Asia/Jakarta** untuk reminder & window rekap.
 5. **Raw text tetap disimpan** agar audit trail + recalculate dimungkinkan.
 6. **Export laporan** tetap relevan untuk arsip/dokumentasi.
@@ -219,9 +224,9 @@ Gunakan daftar ini sebagai **peta fitur resmi saat ini**. Fitur baru idealnya me
 - Menghapus platform IG/FB/TikTok atau mengganti jadi platform lain tanpa migrasi data plan.
 - Membuka app ke multi-tenant / SaaS umum tanpa desain akses baru.
 - Menambah role kompleks (pegawai self-service, atasan, dll.) tanpa spesifikasi role.
-- Mengganti Firebase/auth stack total hanya karena preferensi agent.
+- Mengganti stack penyimpanan lokal (SQLite → lain) tanpa plan migrasi data operator yang sudah berisi rekap nyata.
 - Menambahkan AI chat / generative UI yang **menggantikan** alur rekap manual tanpa opsi fallback.
-- Menyimpan secret API di client tanpa pertimbangan security (token Meta saat ini ada di client/Firestore — perbaikan security boleh, tapi jangan pecah alur operator).
+- Menyimpan secret API di client tanpa pertimbangan security (token Meta disimpan lokal di mesin operator — jangan dikirim ke pihak ketiga tanpa alasan).
 
 ### 6.3 Debt / celah yang diketahui (bukan “fitur hilang”)
 
@@ -229,7 +234,7 @@ Ini boleh diperbaiki, tapi jangan disalahartikan sebagai scope baru:
 
 | Item | Catatan |
 |------|---------|
-| Firestore rules vs model app | Rules masih kurang ketat/lengkap utk field TikTok & akun ke-2 vs `types.ts` app |
+| Validasi input vs model app | Skema DB lokal harus lengkap utk field TikTok & akun ke-2 sesuai `types.ts` app |
 | Matching terpusat | `src/lib/matching.ts` dipakai save + recalculate client (dan API local-dev) — jaga satu sumber kebenaran |
 | Meta token di client | Token disimpan & dipakai dari browser; risiko keamanan |
 | Allowlist email di client + rules | Duplikasi; hardcode email di source |
@@ -249,20 +254,20 @@ Ini boleh diperbaiki, tapi jangan disalahartikan sebagai scope baru:
 | Prioritas | Tema | Contoh (perbaikan, bukan fitur baru) |
 |-----------|------|--------------------------------------|
 | **P0** | **Akurasi matching** (jalur save harian) | False +/- , normalisasi nama/handle, edge case dual-account |
-| **P0** | **Stabilitas production gratis** | Build Vercel free, SPA static andal, tidak bergantung Express abadi |
+| **P0** | **Stabilitas aplikasi desktop** | Build Electron/installer andal, tidak bergantung jaringan, DB lokal aman & ter-backup |
 | **P1** | **Otomasi yang sudah ada (Meta)** | Fetch lebih andal, error handling, window 15:00 konsisten |
-| **P1** | **Security & rules** | Firestore rules selaras model, auth edge case |
+| **P1** | **Integritas & keamanan data lokal** | Lokasi DB, backup/restore, validasi input, tanpa celah ke luar mesin |
 | **P2** | **Maintainability** | Pecah monolit **tanpa** ubah perilaku; kurangi debt |
 | **P2** | **Recalculate** | Prioritas **rendah** (jarang dipakai); cukup jangan rusak / boleh disederhanakan |
 | **P3** | **Polish UX/export/PWA** | Perbaikan kecil yang tidak mengubah cara kerja |
 
-**Di luar scope default:** fitur besar baru, redesign alur, self-service pegawai, multi-tenant, analytics marketing, hosting berbayar.
+**Di luar scope default:** fitur besar baru, redesign alur, self-service pegawai, analytics marketing, hosting berbayar.
 
 ### 7.1 Hierarki keputusan
 
 1. **Tujuan di `specify.md`** (+ keputusan §0)
 2. **Aturan bisnis domain** (skor biner, tanggal, matching, window 15:00 resmi)
-3. **Konsistensi data Firestore**
+3. **Konsistensi data lokal (SQLite)**
 4. **UX operator** (cepat input rekap, jelas laporan)
 5. **Preferensi teknis agent** (terendah)
 
@@ -300,28 +305,29 @@ Ini boleh diperbaiki, tapi jangan disalahartikan sebagai scope baru:
 ## 8. Arsitektur logis (ringkas)
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│  Client (React PWA)                                     │
-│  Login → Dashboard / Input / Reports / Employees / Settings │
-└───────────────┬───────────────────────────┬─────────────┘
-                │                           │
-                ▼                           ▼
-        Firebase Auth+Firestore      Meta Graph API (browser)
-                │
+┌───────────────────────────────────────────────────────────────┐
+│  Renderer (React, src/) — tanpa login                         │
+│  Dashboard / Rekap / Laporan / Pegawai / Ambil Nama / Setelan │
+└───────────────┬───────────────────────────────────────────────┘
+                │ contextBridge (window.reso) — IPC typed
                 ▼
-        Express (/api/recalculate, static/vite)
-                │
-                ▼
-        Firestore commit (recalculate path)
+┌───────────────────────────────────────────────────────────────┐
+│  Main process (electron/)                                     │
+│  • repo SQLite (employees, daily_engagement, settings)        │
+│  • RunController (state scraping, murni + teruji)             │
+│  • ScraperHost (WebContentsView, Chromium bawaan)             │
+└───────────────┬────────────────────────┬──────────────────────┘
+                ▼                        ▼
+        SQLite lokal (userData)   tiktok.com / facebook.com / instagram.com
 ```
 
-**Koleksi Firestore (inti):**
+**Tabel SQLite (inti)** — pengganti koleksi Firestore:
 
-- `employees/{id}`
-- `dailyEngagement/{YYYY-MM-DD}`
-- `settings/{settingId}` (`meta_api`, `appLogo`, …)
-- `admins/{uid}`
-- `users/{uid}` (profil login)
+- `employees`
+- `daily_engagement` (PK = `YYYY-MM-DD`)
+- `settings` (key-value: `meta_api`, `appLogo`, preferensi scraper)
+
+`admins`/`users` **tidak ada** — tanpa login, lihat #10.
 
 ---
 
@@ -339,12 +345,12 @@ Ini boleh diperbaiki, tapi jangan disalahartikan sebagai scope baru:
 - [ ] Tetap **operator-centric** (bukan self-service pegawai diam-diam)?
 - [ ] Tidak mengubah definisi skor (1 platform/hari, biner) tanpa update specify + persetujuan?
 - [ ] Data `dailyEngagement` & raw text tetap valid / ter-migrate?
-- [ ] Auth tetap restricted (bukan public open)?
+- [ ] Akses tetap terbatas ke mesin operator (tanpa login, lihat #10)?
 - [ ] Matching IG/FB/TikTok + dual-account tetap bekerja? (TikTok manual tetap utuh)
 - [ ] Laporan harian/mingguan/bulanan + export tidak rusak?
 - [ ] Window/reminder 14:45–15:00 WIB tidak diubah diam-diam?
 - [ ] Perubahan mengarah ke **akurasi** dan/atau **otomasi** (bukan fitur di luar domain)?
-- [ ] Perubahan security rules selaras field model aktual (termasuk TikTok & *2)?
+- [ ] Tanpa ketergantungan jaringan/servis eksternal baru (kecuali scraping sosmed & Meta API opsional)?
 
 ---
 
@@ -353,12 +359,12 @@ Ini boleh diperbaiki, tapi jangan disalahartikan sebagai scope baru:
 | Field | Value |
 |--------|--------|
 | Versi | `1.2.0` |
-| Basis | Audit + validasi produk (termasuk Vercel free, mode penyempurnaan, recalculate jarang) |
+| Basis | Audit + validasi produk (termasuk offline penuh #10, mode penyempurnaan, recalculate jarang) |
 | Bahasa | Indonesia |
 | Pemilik produk | Tim / maintainer ReSo (manusia) |
 | Peran AI agent | Implementer yang **patuh** pada dokumen ini |
-| Arah product | **Penyempurnaan** (bukan ekspansi); operator-centric; Diskominfo; Vercel free |
-| Deploy | **Vercel free · `*.vercel.app` · full gratis** |
+| Arah product | **Penyempurnaan** (bukan ekspansi); operator-centric; Diskominfo; offline #10 |
+| Deploy | **Installer Electron Windows (NSIS)** · offline · tanpa server (#10) |
 
 ### Cara mengubah specify
 
@@ -372,7 +378,7 @@ Ini boleh diperbaiki, tapi jangan disalahartikan sebagai scope baru:
 
 > ReSo adalah **alat internal Diskominfo untuk merekap engagement pegawai ke sosmed lembaga** (IG, FB, TikTok).  
 > Dioperasikan **admin/operator**. Skor **biner per platform/hari**. Window **15:00 WIB** resmi.  
-> Deploy **Vercel free**. Workflow saat ini **sudah ideal** — kembangkan lewat **penyempurnaan** (bukan rombak / fitur besar).  
+> Distribusi lewat **installer Electron Windows**, berjalan **offline** (#10). Workflow operator **sudah ideal** — kembangkan lewat **penyempurnaan** (bukan rombak / fitur besar).  
 > **Bukan** self-service pegawai, **bukan** analytics marketing, **bukan** produk generik di luar rekap.
 
 Jika ragu: **lebih andal, cara kerja sama, data historis aman, tetap gratis.**

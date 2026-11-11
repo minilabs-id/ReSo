@@ -67,3 +67,56 @@ export interface EngineOptions {
   mediaId?: string | null
   templateUrl?: string | null
 }
+
+// ===================== Domain rekap (database lokal) =====================
+// Pindahan dari src/types.ts (versi Firestore) ke sini supaya main process &
+// renderer memakai SATU definisi. Timestamp Firestore diganti ISO string
+// (SQLite menyimpan TEXT) — lihat electron/db/schema.ts.
+
+/** Nama di rekap yang belum cocok dengan pegawai mana pun (antrian review). */
+export interface UnmatchedName {
+  name: string
+  platform: 'ig' | 'fb' | 'tiktok'
+}
+
+export interface Employee {
+  id: string
+  name: string
+  nip: string
+  bidang?: string
+  igUsername?: string
+  igUsername2?: string
+  fbName?: string
+  fbName2?: string
+  tiktokName?: string
+  tiktokName2?: string
+  /** Nama panggilan/varian hasil pemetaan admin (antrian belum terpetakan). */
+  aliases?: string[]
+  createdAt?: string | null
+  updatedAt?: string | null
+}
+
+export interface DailyEngagement {
+  /** YYYY-MM-DD (primary key di SQLite). */
+  id: string
+  date: string
+  igRawText?: string | null
+  fbRawText?: string | null
+  tiktokRawText?: string | null
+  igEngagedEmployeeIds?: string[]
+  fbEngagedEmployeeIds?: string[]
+  tiktokEngagedEmployeeIds?: string[]
+  igLinks?: string[]
+  fbLinks?: string[]
+  tiktokLinks?: string[]
+  updatedAt?: string | null
+  /** Diisi otomatis oleh scraper native (pengganti penanda ekstensi). */
+  autoFilledAt?: string | null
+  autoFilledCount?: number | null
+  /** Operator sudah memeriksa rekap otomatis. */
+  verifiedAt?: string | null
+  /** Nama yang tidak cocok dengan pegawai mana pun (antrian belum terpetakan). */
+  unmatchedNames?: UnmatchedName[]
+  /** Waktu posting post yang direkap otomatis (ISO lokal "YYYY-MM-DDTHH:MM"). */
+  postedAt?: string[]
+}

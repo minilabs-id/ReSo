@@ -18,7 +18,7 @@
     "test:stress": "tsx src/lib/extreme-stress.test.ts",
     "test:api": "tsx src/lib/engagement-api.test.ts && tsx src/lib/engagement-api.handler.test.ts",
     "test:net": "tsx src/lib/fetch-with-timeout.test.ts",
-    "test:shared": "tsx src/shared/index.test.ts && tsx src/shared/run-state.test.ts && tsx electron/store/settings-schema.test.ts && tsx electron/store/state-schema.test.ts",
+    "test:shared": "tsx src/shared/index.test.ts && tsx src/shared/run-state.test.ts && tsx electron/store/settings-schema.test.ts && tsx electron/store/state-schema.test.ts && tsx electron/scrape/engine-tiktok-logic.test.ts",
     "deploy:rules": "firebase deploy --only firestore:rules",
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
     "test": "npm run test:shared && npm run test:matching && npm run test:api && npm run test:net && npm run test:handoff",
@@ -29,6 +29,7 @@
     "@fontsource-variable/geist": "^5.2.8",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
+    "better-sqlite3": "^13.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-store": "^10.0.0",
@@ -50,6 +51,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.14",
