@@ -13,7 +13,19 @@ const { join } = require('path')
 const OUT = join(__dirname, '..', 'abi-result.txt')
 
 function report(ok, detail) {
-  writeFileSync(OUT, JSON.stringify({ ok, detail, abi: process.versions.modules }, null, 2))
+  try {
+    writeFileSync(OUT, JSON.stringify({ ok, detail, abi: process.versions.modules }, null, 2))
+  } catch (err) {
+    // Tulis gagal (mis. folder read-only) — jangan sampai menutupi hasil uji.
+    console.error('gagal menulis abi-result.txt:', err)
+  }
+}
+
+// Jangan bergantung pada app.whenReady bila proses tidak di-bootstrap Electron
+// (mis. dijalankan `node`): laporkan sebagai kegagalan yang jelas, bukan crash.
+if (!app || typeof app.whenReady !== 'function') {
+  report(false, { error: 'bukan runtime Electron — jalankan dengan electron.exe' })
+  process.exit(1)
 }
 
 app.whenReady().then(() => {

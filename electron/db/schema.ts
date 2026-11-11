@@ -118,11 +118,16 @@ function nullishToUndefined(v: string | null): string | undefined {
   return v === null || v === '' ? undefined : v
 }
 
-/** Hanya simpan string non-kosong; kosong → undefined (bukan ""). */
-export function cleanText(v: unknown): string | undefined {
-  if (typeof v !== 'string') return undefined
+/** Hanya simpan string non-kosong; kosong → null (bukan "", bukan undefined).
+ *
+ * `undefined` sengaja TIDAK dipakai di sini: di `dailyPatchToColumns`, `undefined`
+ * berarti "kolom tidak dikirim" (patch parsial), sedangkan `null` berarti
+ * "kosongkan kolom ini". Mencampur keduanya membuat patch parsial menghapus
+ * data yang tidak dimaksud. */
+export function cleanText(v: unknown): string | null {
+  if (typeof v !== 'string') return null
   const t = v.trim()
-  return t ? t : undefined
+  return t ? t : null
 }
 
 export function employeeFromRow(row: EmployeeRow): Employee {
@@ -176,9 +181,12 @@ export function dailyFromRow(row: DailyRow): DailyEngagement {
     tiktokLinks: parseJson<string[]>(row.tiktok_links, []),
     unmatchedNames: parseJson<UnmatchedName[]>(row.unmatched_names, []),
     postedAt: parseJson<string[]>(row.posted_at, []),
+    // Timestamp: `undefined` = belum pernah diisi (tipe domain memakai
+    // `string | null | undefined`), jadi kosong tetap `undefined` — BUKAN null —
+    // supaya UI bisa membedakan "belum diverifikasi" dari "null eksplisit".
     autoFilledAt: row.auto_filled_at ?? undefined,
     autoFilledCount: row.auto_filled_count ?? undefined,
-    verifiedAt: row.verified_at ?? undefined,
+    verifiedAt: row.verified_at ?? null,
     updatedAt: row.updated_at ?? undefined,
   }
 }
