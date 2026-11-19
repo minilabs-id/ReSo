@@ -14,6 +14,17 @@ const api = {
     getMeta: () => ipcRenderer.invoke(IPC.appGetMeta),
   },
 
+  /** Browser internal (WebContentsView) yang bisa dibuka/diarahkan dari UI. */
+  browser: {
+    openBrowser: (platform: string, bounds: unknown): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.scrapeOpenBrowser, platform, bounds),
+    closeBrowser: (): Promise<boolean> => ipcRenderer.invoke(IPC.scrapeCloseBrowser),
+    setBounds: (bounds: unknown): Promise<boolean> => ipcRenderer.invoke(IPC.scrapeSetBounds, bounds),
+    navigate: (platform: string, url: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.scrapeNavigate, platform, url),
+    getUrl: (platform: string): Promise<string> => ipcRenderer.invoke(IPC.scrapeGetUrl, platform),
+  },
+
   /** Token Meta tidak pernah dikirim ke renderer — status + proxy fetch. */
   meta: {
     status: (): Promise<{ configured: boolean }> => ipcRenderer.invoke(IPC.metaStatus),

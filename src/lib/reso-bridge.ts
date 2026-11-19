@@ -111,6 +111,15 @@ interface ResoDataBridge {
   batchSave?: (ops: unknown) => Promise<{ ok: boolean; reason?: string }>
 }
 
+/** Browser internal tempat operator membuka postingan lalu menekan tombol Scrap. */
+export interface ResoScrapeBrowserBridge {
+  openBrowser: (platform: string, bounds: unknown) => Promise<boolean>
+  closeBrowser: () => Promise<boolean>
+  setBounds: (bounds: unknown) => Promise<boolean>
+  navigate: (platform: string, url: string) => Promise<boolean>
+  getUrl: (platform: string) => Promise<string>
+}
+
 /** Token Meta dipegang main process; renderer hanya tahu status & meminta fetch. */
 export interface ResoMetaBridge {
   status: () => Promise<{ configured: boolean }>
@@ -123,6 +132,7 @@ declare global {
       platform: 'electron'
       app: { getMeta: () => Promise<ResoAppMeta> }
       meta: ResoMetaBridge
+      browser: ResoScrapeBrowserBridge
       settings: ResoSettingsBridge
       data: ResoDataBridge
       scrape: {
@@ -156,6 +166,63 @@ export async function getMetaStatus(): Promise<{ configured: boolean }> {
 export async function metaRequest(path: string, tokenOverride?: string): Promise<unknown> {
   if (!isElectron) throw new Error('Meta API hanya tersedia di aplikasi desktop')
   return window.reso!.meta.request(path, tokenOverride)
+}
+
+// ===================== Browser internal (buka postingan → tombol Scrap) =====================
+
+export interface ScrapeBrowserBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export async function openScrapeBrowser(
+  platform: string,
+  bounds: ScrapeBrowserBounds
+): Promise<boolean> {
+  if (!isElectron) return false
+  try {
+    return await window.reso!.browser.openBrowser(platform, bounds)
+  } catch {
+    return false
+  }
+}
+
+export async function closeScrapeBrowser(): Promise<void> {
+  if (!isElectron) return
+  try {
+    await window.reso!.browser.closeBrowser()
+  } catch {
+    /* already closed */
+  }
+}
+
+export async function setScrapeBrowserBounds(bounds: ScrapeBrowserBounds): Promise<void> {
+  if (!isElectron) return
+  try {
+    await window.reso!.browser.setBounds(bounds)
+  } catch {
+    /* window resized */
+  }
+}
+
+export async function navigateScrapeBrowser(platform: string, url: string): Promise<boolean> {
+  if (!isElectron) return false
+  try {
+    return await window.reso!.browser.navigate(platform, url)
+  } catch {
+    return false
+  }
+}
+
+export async function getScrapeBrowserUrl(platform: string): Promise<string> {
+  if (!isElectron) return ''
+  try {
+    return await window.reso!.browser.getUrl(platform)
+  } catch {
+    return ''
+  }
 }
 
 // ===================== Pengaturan (M2 — JSON store) =====================

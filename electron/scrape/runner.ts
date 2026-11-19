@@ -1,6 +1,6 @@
 /**
  * Runner scraping — jembatan antara state machine (RunController) dan engine
- * Electron (ScraperHost + engine TikTok).
+ * Electron (ScraperHost + engine TikTok + engine sosial FB/IG).
  *
  * RunController tetap murni soal state; runner yang melakukan efek I/O: baca
  * preferensi, ambil host, jalankan engine, lalu kirim balik PROGRESS/DONE/FAIL
@@ -9,11 +9,16 @@
  *
  * SATU run per platform. AbortController disimpan per platform supaya STOP
  * bisa memotong engine di tengah jalan (engine memakai `signal.aborted`).
+ *
+ * TARGET: semua platform memakai URL halaman yang SEDANG TERBUKA di browser
+ * aplikasi (dibaca main lewat `getHostUrl`). Renderer tidak perlu mengirim
+ * URL target apa pun.
  */
 import type { BrowserWindow } from 'electron'
 import { getSettings } from '../store/settings-store'
-import { getHost } from './scraper-host'
+import { getHost, getHostUrl } from './scraper-host'
 import { runTikTokCapture, sanitizeTikTokTemplateForRun } from './engine-tiktok'
+import { runSocialCapture } from './engine-social'
 import type { CaptureRequest } from './engine-tiktok-logic'
 import type { Platform } from '../../src/shared/types'
 
@@ -104,12 +109,6 @@ async function execute(
     if (finishIfCurrent(platform, runId)) dispatch({ type: 'FAIL', runId, message })
   }
 
-  // FB/IG: engine belum ada — jangan biarkan UI menggantung di "running".
-  if (platform !== 'tiktok') {
-    fail(`Engine ${platform.toUpperCase()} belum tersedia.`)
-    return
-  }
-
   const win = mainWindow
   if (!win || win.isDestroyed()) {
     fail('Jendela utama belum siap — buka ulang aplikasi.')
@@ -118,18 +117,6 @@ async function execute(
 
   const settings = getSettings()
 
-  // Validasi ketat SEBELUM navigasi. Template invalid → FAIL, jangan loadURL.
-  let templateUrl: string | null = null
-  if (settings.tiktokTemplateUrl) {
-    templateUrl = sanitizeTikTokTemplateForRun(settings.tiktokTemplateUrl)
-    if (!templateUrl) {
-      fail('Template TikTok tidak valid — periksa URL template di Pengaturan.')
-      return
-    }
-  }
-
-  // Fallback navigation: URL video yang sedang terbuka di host (bila ada).
-  // Renderer tidak mengirim videoUrl, jadi ini satu-satunya sumber tanpa UI baru.
   let host
   try {
     host = getHost(win, platform)
@@ -137,16 +124,81 @@ async function execute(
     fail(`Gagal menyiapkan browser scraper: ${err instanceof Error ? err.message : String(err)}`)
     return
   }
-  const videoUrl = plausibleTikTokVideoUrl(host.view.webContents.getURL())
 
-  if (!templateUrl && !videoUrl) {
-    fail('Belum ada target. Isi URL template TikTok di Pengaturan, lalu Proses lagi.')
+  // URL halaman yang sedang terbuka di browser aplikasi — satu-satunya sumber
+  // target untuk FB/IG, dan sumber utama (di atas template) untuk TikTok.
+  const hostUrl = currentHostUrl(platform)
+
+  // ===================== Facebook / Instagram =====================
+  if (platform === 'facebook' || platform === 'instagram') {
+    const postUrl =
+      platform === 'facebook'
+        ? plausibleFacebookPostUrl(hostUrl)
+        : plausibleInstagramPostUrl(hostUrl)
+
+    if (!postUrl) {
+      fail(
+        platform === 'facebook'
+          ? 'Buka dulu postingan Facebook di browser aplikasi, lalu klik tombol Scrap.'
+          : 'Buka dulu postingan Instagram di browser aplikasi, lalu klik tombol Scrap.'
+      )
+      return
+    }
+
+    const result = await runSocialCapture(host.view, platform, {
+      ...settings,
+      includeReplies,
+      timeoutMs: settings.captureTimeoutMs,
+      signal,
+    })
+
+    // STOP / runId baru: buang hasil basi (STOP sudah menulis state berhenti).
+    if (!isCurrent(platform, runId)) return
+
+    // Stream nama unik per chunk supaya daftar terisi bertahap.
+    const unique = [...new Set(result.names)].filter((name): name is string => !!name)
+    for (let i = 0; i < unique.length; i += 25) {
+      if (!isCurrent(platform, runId)) return
+      dispatch({ type: 'PROGRESS', runId, names: unique.slice(i, i + 25) })
+    }
+
+    // Tutup run hanya setelah semua chunk terkirim (entry masih dipakai loop di atas).
+    if (!finishIfCurrent(platform, runId)) return
+    if (result.reason === 'error') {
+      dispatch({ type: 'FAIL', runId, message: result.detail || 'Gagal mengambil komentar.' })
+      return
+    }
+    dispatch({ type: 'DONE', runId, reason: result.reason })
+    return
+  }
+
+  // ===================== TikTok =====================
+  // Main membaca sendiri URL video yang sedang terbuka (dari `getHostUrl`);
+  // renderer tidak perlu mengirim videoUrl. Template jadi fallback.
+  const currentVideoUrl =
+    plausibleTikTokVideoUrl(hostUrl) ?? plausibleTikTokVideoUrl(host.view.webContents.getURL())
+
+  // Validasi template SEBELUM navigasi — tapi hanya bila URL video tidak ada.
+  // Template invalid → FAIL, jangan loadURL.
+  let templateUrl: string | null = null
+  if (!currentVideoUrl && settings.tiktokTemplateUrl) {
+    templateUrl = sanitizeTikTokTemplateForRun(settings.tiktokTemplateUrl)
+    if (!templateUrl) {
+      fail('Template TikTok tidak valid — periksa URL template di Pengaturan.')
+      return
+    }
+  }
+
+  if (!templateUrl && !currentVideoUrl) {
+    fail(
+      'Belum ada target. Buka video TikTok di browser aplikasi atau isi URL template di Pengaturan, lalu Proses lagi.'
+    )
     return
   }
 
   const req: CaptureRequest = {
     templateUrl,
-    videoUrl,
+    videoUrl: currentVideoUrl,
     includeReplies,
     maxScrollRounds: settings.maxScrollRounds,
     scrollDelayMs: settings.scrollDelayMs,
@@ -177,6 +229,48 @@ async function execute(
     return
   }
   dispatch({ type: 'DONE', runId, reason: result.reason })
+}
+
+/** Baca URL host dengan aman — host bisa belum ada / view sudah mati. */
+function currentHostUrl(platform: Platform): string {
+  try {
+    return getHostUrl(platform) || ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Hanya terima URL halaman Facebook/fb yang wajar. Pola postingan umum:
+ * `/posts/`, `/permalink.php`, `/reel/`, `/photo/` — tapi domain facebook/fb
+ * dengan path apa pun tetap diterima (operator bisa saja membuka varian URL).
+ */
+function plausibleFacebookPostUrl(url: unknown): string | null {
+  if (typeof url !== 'string' || !url) return null
+  try {
+    const u = new URL(url)
+    const h = u.hostname.toLowerCase()
+    if (!h.endsWith('facebook.com') && !h.endsWith('fb.com')) return null
+    if (u.pathname.toLowerCase().includes('/login')) return null
+    return u.toString()
+  } catch {
+    return null
+  }
+}
+
+/** Hanya terima URL postingan Instagram (/p/, /reel/, /tv/) di domain instagram.com. */
+function plausibleInstagramPostUrl(url: unknown): string | null {
+  if (typeof url !== 'string' || !url) return null
+  try {
+    const u = new URL(url)
+    const h = u.hostname.toLowerCase()
+    if (!h.endsWith('instagram.com')) return null
+    const p = u.pathname
+    if (!['/p/', '/reel/', '/tv/'].some((seg) => p.includes(seg))) return null
+    return u.toString()
+  } catch {
+    return null
+  }
 }
 
 /** Hanya terima URL halaman video/foto TikTok yang wajar (bukan feed/login/api). */

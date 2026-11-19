@@ -1,13 +1,22 @@
 import { app, BrowserWindow, ipcMain, safeStorage, session, shell } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
-import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseMetaPath } from './ipc/contracts'
+import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseMetaPath, parseBrowserBounds } from './ipc/contracts'
 import { getSettings, setSettings, resetSettings } from './store/settings-store'
 import { runController, setScrapeMainWindow } from './ipc/run-controller'
+import { getHostUrl, hideHost, isScrapeHostContents, loadHost, onScrapClick, setHostBounds, showHost } from './scrape/scraper-host'
+import { newRunId } from '../src/shared/state'
+import type { Platform } from '../src/shared/types'
 import * as db from './db/database'
 
 const isDev = !app.isPackaged
 let mainWindow: BrowserWindow | null = null
+/** Opsi terakhir dari UI — dipakai saat tombol Scrap di halaman ditekan. */
+const lastIncludeReplies: Record<Platform, boolean> = {
+  facebook: false,
+  tiktok: false,
+  instagram: false,
+}
 
 function isHttp(url: string): boolean {
   return url.startsWith('http://') || url.startsWith('https://')
@@ -108,6 +117,7 @@ function createWindow(): BrowserWindow {
     if (mainWindow === win) {
       mainWindow = null
       setScrapeMainWindow(null)
+      hideHost()
     }
   })
 
@@ -149,14 +159,46 @@ function registerIpc(): void {
     isPlatform(platform) ? runController.get(platform) : null
   )
   safeHandle(IPC.scrapeGetAll, () => runController.getAll())
-  safeHandle(IPC.scrapeApplyEvent, (_event, platform: unknown, event: unknown) =>
-    isPlatform(platform) ? runController.apply(platform, event) : null
-  )
+  safeHandle(IPC.scrapeApplyEvent, (_event, platform: unknown, event: unknown) => {
+    if (!isPlatform(platform)) return null
+    if (event && typeof event === 'object' && (event as { type?: unknown }).type === 'START') {
+      const inc = (event as { includeReplies?: unknown }).includeReplies
+      lastIncludeReplies[platform] = inc === true
+    }
+    return runController.apply(platform, event)
+  })
   safeHandle(IPC.scrapeClearNames, (_event, platform: unknown) =>
     isPlatform(platform) ? runController.clearNames(platform) : null
   )
   safeHandle(IPC.scrapeReset, (_event, platform: unknown) =>
     isPlatform(platform) ? runController.reset(platform) : null
+  )
+
+  // Browser internal yang terlihat + tombol Scrap di halaman postingan.
+  safeHandle(IPC.scrapeOpenBrowser, (_event, platform: unknown, bounds: unknown) => {
+    if (!isPlatform(platform)) return false
+    const b = parseBrowserBounds(bounds)
+    if (!b) return false
+    showHost(platform, b)
+    return true
+  })
+  safeHandle(IPC.scrapeCloseBrowser, () => {
+    hideHost()
+    return true
+  })
+  safeHandle(IPC.scrapeSetBounds, (_event, bounds: unknown) => {
+    const b = parseBrowserBounds(bounds)
+    if (!b) return false
+    setHostBounds(b)
+    return true
+  })
+  safeHandle(IPC.scrapeNavigate, (_event, platform: unknown, url: unknown) => {
+    if (!isPlatform(platform) || typeof url !== 'string') return false
+    loadHost(platform, url)
+    return true
+  })
+  safeHandle(IPC.scrapeGetUrl, (_event, platform: unknown) =>
+    isPlatform(platform) ? getHostUrl(platform) : ''
   )
 
   // Data lokal (SQLite). SQL hanya lewat prepared statement; payload divalidasi.
@@ -356,6 +398,14 @@ function hardenSession(): void {
 app.whenReady().then(() => {
   hardenSession()
   registerIpc()
+  // Tombol "Scrap" yang di-inject ke halaman memicu run platform itu.
+  onScrapClick((platform) => {
+    runController.apply(platform, {
+      type: 'START',
+      runId: newRunId(),
+      includeReplies: lastIncludeReplies[platform],
+    })
+  })
   createWindow()
 
   app.on('activate', () => {
@@ -387,6 +437,9 @@ app.on('web-contents-created', (_event, contents) => {
   contents.on('will-navigate', (event, url) => {
     const isMain = mainWindow !== null && contents.id === mainWindow.webContents.id
     if (isMain) return // navigasi jendela utama diatur di createWindow
+
+    // WebContentsView scraper boleh navigasi ke situs sosial di session sendiri.
+    if (isScrapeHostContents(contents)) return
 
     event.preventDefault()
     if (isHttp(url)) void shell.openExternal(url).catch(() => {})

@@ -25,8 +25,11 @@ Direktori `api/`, `firestore.rules`, dan referensi Firebase lainnya adalah
 - Master pegawai (CRUD, cari/urut, impor Excel/CSV, ekspor, template).
 - Input rekap harian: teks mentah IG/FB/TikTok + link, tarik data Meta API
   (opsional), matching nama/handle (termasuk akun ke-2).
-- Ambil Nama: scraper in-app untuk TikTok/FB/IG (input manual TikTok tetap
-  didukung penuh).
+- Ambil Nama: browser internal (Chromium Electron) untuk membuka postingan
+  FB/IG/TikTok. Tiap halaman diberi tombol mengambang **Scrap** — klik setelah
+  daftar komentar muncul untuk mengambil nama langsung, tanpa paste manual.
+  Tombol **Proses halaman ini** tetap tersedia sebagai alternatif. Input manual
+  TikTok juga tetap didukung penuh.
 - Dashboard, laporan harian/mingguan/bulanan + ekspor PDF / gambar / Excel.
 - Pengaturan lokal: token Meta API, preferensi scraper, info versi & lokasi DB.
 

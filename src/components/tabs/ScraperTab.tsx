@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
@@ -10,6 +10,10 @@ import {
   onScrapeStateChanged,
   applyScrapeEvent,
   clearScrapeNames,
+  openScrapeBrowser,
+  closeScrapeBrowser,
+  setScrapeBrowserBounds,
+  navigateScrapeBrowser,
   type NameState,
 } from '../../lib/reso-bridge';
 import { filterNames, sortNamesAz, namesToClipboardText } from '../../shared/normalize';
@@ -21,6 +25,12 @@ const PLATFORM_LABEL: Record<Platform, string> = {
   facebook: 'Facebook',
   tiktok: 'TikTok',
   instagram: 'Instagram',
+};
+
+const DEFAULT_URL: Record<Platform, string> = {
+  facebook: 'https://www.facebook.com/',
+  tiktok: 'https://www.tiktok.com/',
+  instagram: 'https://www.instagram.com/',
 };
 
 /** Id banner fallback web — jadi penjelasan aria untuk tombol yang dinonaktifkan. */
@@ -86,6 +96,12 @@ export default function ScraperPanel() {
   /** null = ikuti nilai state main; entri = pilihan operator per platform. */
   const [repliesOverride, setRepliesOverride] = useState<Partial<Record<Platform, boolean>>>({});
 
+  // Browser internal: posisi WebContentsView mengikuti kotak ini.
+  const browserRef = useRef<HTMLDivElement | null>(null);
+  const lastBoundsRef = useRef('');
+  const [browserUrl, setBrowserUrl] = useState<string>(DEFAULT_URL.tiktok);
+  const [browserError, setBrowserError] = useState('');
+
   useEffect(() => {
     if (!isElectron) return;
     let cancelled = false;
@@ -102,6 +118,63 @@ export default function ScraperPanel() {
       off();
     };
   }, []);
+
+  /** Pasang browser view terlihat pada kotak yang diberikan, ikuti ukuran/scroll. */
+  useEffect(() => {
+    if (!isElectron) return;
+    let raf = 0;
+    const bounds = () => {
+      const el = browserRef.current;
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { x: r.left, y: r.top, width: r.width, height: r.height };
+    };
+    void (async () => {
+      const b = bounds();
+      if (!b) return;
+      await openScrapeBrowser(platform, b);
+      lastBoundsRef.current = '';
+      await navigateScrapeBrowser(platform, DEFAULT_URL[platform]);
+      setBrowserUrl(DEFAULT_URL[platform]);
+      setBrowserError('');
+    })();
+
+    const sync = () => {
+      const b = bounds();
+      if (!b) return;
+      const key = `${b.x}|${b.y}|${b.width}|${b.height}`;
+      if (key === lastBoundsRef.current) return;
+      lastBoundsRef.current = key;
+      void setScrapeBrowserBounds(b);
+    };
+    const loop = () => {
+      sync();
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    window.addEventListener('scroll', sync, true);
+    window.addEventListener('resize', sync);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('scroll', sync, true);
+      window.removeEventListener('resize', sync);
+      void closeScrapeBrowser();
+    };
+  }, [platform]);
+
+  const openUrl = useCallback(async (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) return;
+    const url = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    const ok = await navigateScrapeBrowser(platform, url);
+    if (ok) {
+      setBrowserUrl(url);
+      setBrowserError('');
+    } else {
+      setBrowserError('URL tidak valid — gunakan alamat http/https.');
+    }
+  }, [platform]);
 
   const state = states[platform];
   const includeReplies = repliesOverride[platform] ?? state.includeReplies;
@@ -224,10 +297,58 @@ export default function ScraperPanel() {
         ))}
       </div>
 
+      {/* Browser internal: buka postingan di sini, lalu klik tombol "Scrap" di halaman. */}
+      <Card className="p-4 sm:p-5 space-y-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            value={browserUrl}
+            onChange={(e) => setBrowserUrl(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void openUrl(browserUrl);
+            }}
+            placeholder="https://... buka postingan FB/IG/TikTok"
+            aria-label="Alamat postingan"
+            className="h-9 flex-1 min-w-[220px] text-[11px]"
+            disabled={!isElectron}
+          />
+          <Button size="sm" onClick={() => void openUrl(browserUrl)} disabled={!isElectron}>
+            Buka
+          </Button>
+          {(Object.keys(PLATFORM_LABEL) as Platform[]).map((p) => (
+            <Button
+              key={p}
+              variant="ghost"
+              size="sm"
+              onClick={() => void openUrl(DEFAULT_URL[p])}
+              disabled={!isElectron}
+              title={`Buka beranda ${PLATFORM_LABEL[p]}`}
+            >
+              {p === 'facebook' ? 'FB' : p === 'instagram' ? 'IG' : 'TT'}
+            </Button>
+          ))}
+        </div>
+        {browserError && <p className="text-[11px] font-medium text-rose-600">{browserError}</p>}
+        <div
+          ref={browserRef}
+          className="h-[520px] w-full rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
+          aria-label={`Browser ${PLATFORM_LABEL[platform]}`}
+        >
+          {!isElectron && (
+            <div className="flex h-full items-center justify-center px-6 text-center text-[11px] text-slate-500">
+              Browser internal hanya tersedia di ReSo Desktop.
+            </div>
+          )}
+        </div>
+        <p className="text-[11px] text-slate-500">
+          Buka satu postingan/video → buka daftar komentar → klik tombol <b>Scrap</b> di kanan atas
+          halaman. Nama akan masuk ke daftar di bawah otomatis.
+        </p>
+      </Card>
+
       <Card className="p-4 sm:p-5 space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <Button onClick={() => void start()} disabled={!isElectron || running} {...webDisabledProps}>
-            {running ? 'Berjalan…' : 'Proses'}
+            {running ? 'Berjalan…' : 'Proses halaman ini'}
           </Button>
           <Button
             variant="outline"

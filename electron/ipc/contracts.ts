@@ -28,6 +28,11 @@ export const IPC = {
   dbBatchSave: 'reso:db:batch-save',
   metaStatus: 'reso:meta:status',
   metaRequest: 'reso:meta:request',
+  scrapeOpenBrowser: 'reso:scrape:open-browser',
+  scrapeCloseBrowser: 'reso:scrape:close-browser',
+  scrapeSetBounds: 'reso:scrape:set-bounds',
+  scrapeNavigate: 'reso:scrape:navigate',
+  scrapeGetUrl: 'reso:scrape:get-url',
   dbExportAll: 'reso:db:export-all',
   dbImportAll: 'reso:db:import-all',
   dbListSettings: 'reso:db:list-settings',
@@ -185,6 +190,26 @@ export function parseBatchSave(v: unknown): BatchSaveOp[] | null {
     if (!isDelete && !isRecord(item.data)) return null
     out.push({ collection, id, data: item.data, delete: isDelete })
   }
+  return out
+}
+
+/** Posisi browser view di dalam jendela (CSS pixel, relatif ke content view). */
+export interface BrowserBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+export function parseBrowserBounds(v: unknown): BrowserBounds | null {
+  if (!isRecord(v)) return null
+  const out: BrowserBounds = { x: 0, y: 0, width: 0, height: 0 }
+  for (const key of ['x', 'y', 'width', 'height'] as const) {
+    const n = v[key]
+    if (typeof n !== 'number' || !Number.isFinite(n) || Math.abs(n) > 100000) return null
+    out[key] = Math.round(n)
+  }
+  if (out.width < 100 || out.height < 100) return null
   return out
 }
 

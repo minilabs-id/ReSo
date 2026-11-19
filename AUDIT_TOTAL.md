@@ -175,7 +175,7 @@ Verifikasi setelah tiap batch: `npm test`, `npm run typecheck:desktop`, `npm run
 ### Sudah diperbaiki & diverifikasi
 | Temuan | Perbaikan |
 |--------|-----------|
-| P0-1 | Scraper di-wire: `setScrapeMainWindow`, runner per-platform, START→engine→PROGRESS/DONE/FAIL dengan `runId`, STOP membatalkan run, FB/IG gagal jujur (tidak menggantung). `detach()` tidak lagi melepas semua listener session; template divalidasi ketat. |
+| P0-1 | Scraper di-wire **dan kini memakai browser internal yang terlihat**: `showHost`/`hideHost`/`setHostBounds`, alamat URL di panel Ambil Nama, tombol **Scrap** di-inject ke halaman FB/IG/TikTok (klik → START dengan `runId`), runner memakai URL halaman aktif. FB/IG memakai `engine-social.ts` (ekstraksi DOM + scroll), TikTok tetap `engine-tiktok.ts`. STOP membatalkan run; `detach()` tidak melepas semua listener. |
 | P0-2 | Matching boundary-aware (Unicode), alias ikut `stripAt`, test regresi nama mirip/`@`/dual-account. |
 | P1-1 | Token Meta dienkripsi `safeStorage`; status token saja yang dikirim ke renderer; fetch Graph API lewat IPC proxy dengan header `Authorization: Bearer` (token tidak pernah di URL). |
 | P1-2 | `exportAll()` memuat `settings` + `schemaVersion`; import menulis ulang settings; UI memberi peringatan cadangan memuat token. |
