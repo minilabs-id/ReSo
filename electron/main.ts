@@ -4,7 +4,7 @@ import { pathToFileURL } from 'url'
 import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseMetaPath, parseBrowserBounds } from './ipc/contracts'
 import { getSettings, setSettings, resetSettings } from './store/settings-store'
 import { runController, setScrapeMainWindow } from './ipc/run-controller'
-import { getHostUrl, hideHost, isScrapeHostContents, loadHost, onScrapClick, setHostBounds, showHost } from './scrape/scraper-host'
+import { getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, notifyScrapClick, onScrapClick, platformForContents, setHostBounds, showHost, verifyScrapClick } from './scrape/scraper-host'
 import { newRunId } from '../src/shared/state'
 import type { Platform } from '../src/shared/types'
 import * as db from './db/database'
@@ -200,6 +200,31 @@ function registerIpc(): void {
   safeHandle(IPC.scrapeGetUrl, (_event, platform: unknown) =>
     isPlatform(platform) ? getHostUrl(platform) : ''
   )
+  safeHandle(IPC.scrapeBrowserBack, (_event, platform: unknown) => {
+    if (!isPlatform(platform)) return false
+    navigateHost(platform, 'back')
+    return true
+  })
+  safeHandle(IPC.scrapeBrowserForward, (_event, platform: unknown) => {
+    if (!isPlatform(platform)) return false
+    navigateHost(platform, 'forward')
+    return true
+  })
+  safeHandle(IPC.scrapeBrowserReload, (_event, platform: unknown) => {
+    if (!isPlatform(platform)) return false
+    navigateHost(platform, 'reload')
+    return true
+  })
+  safeHandle(IPC.scrapeBrowserNavState, (_event, platform: unknown) =>
+    isPlatform(platform) ? hostNavState(platform) : { canBack: false, canForward: false }
+  )
+
+  // Klik tombol Scrap dari halaman: verifikasi nonce + asal webContents.
+  ipcMain.on(IPC.scrapClick, (event, nonce: unknown) => {
+    const platform = platformForContents(event.sender)
+    if (!platform || !verifyScrapClick(platform, nonce)) return
+    notifyScrapClick(platform)
+  })
 
   // Data lokal (SQLite). SQL hanya lewat prepared statement; payload divalidasi.
   safeHandle(IPC.dbListEmployees, () => db.listEmployees())

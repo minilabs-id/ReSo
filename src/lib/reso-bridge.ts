@@ -118,6 +118,12 @@ export interface ResoScrapeBrowserBridge {
   setBounds: (bounds: unknown) => Promise<boolean>
   navigate: (platform: string, url: string) => Promise<boolean>
   getUrl: (platform: string) => Promise<string>
+  back: (platform: string) => Promise<boolean>
+  forward: (platform: string) => Promise<boolean>
+  reload: (platform: string) => Promise<boolean>
+  navState: (platform: string) => Promise<{ canBack: boolean; canForward: boolean }>
+  onNavigated?: (cb: (payload: { platform: string; url: string }) => void) => () => void
+  onLoading?: (cb: (payload: { platform: string; loading: boolean }) => void) => () => void
 }
 
 /** Token Meta dipegang main process; renderer hanya tahu status & meminta fetch. */
@@ -223,6 +229,42 @@ export async function getScrapeBrowserUrl(platform: string): Promise<string> {
   } catch {
     return ''
   }
+}
+
+export async function browserBack(platform: string): Promise<void> {
+  if (!isElectron) return
+  try { await window.reso!.browser.back(platform) } catch { /* sudah di awal */ }
+}
+
+export async function browserForward(platform: string): Promise<void> {
+  if (!isElectron) return
+  try { await window.reso!.browser.forward(platform) } catch { /* sudah di akhir */ }
+}
+
+export async function browserReload(platform: string): Promise<void> {
+  if (!isElectron) return
+  try { await window.reso!.browser.reload(platform) } catch { /* halaman tutup */ }
+}
+
+export async function getBrowserNavState(
+  platform: string
+): Promise<{ canBack: boolean; canForward: boolean }> {
+  if (!isElectron) return { canBack: false, canForward: false }
+  try { return await window.reso!.browser.navState(platform) } catch { return { canBack: false, canForward: false } }
+}
+
+export function onBrowserNavigated(
+  cb: (payload: { platform: string; url: string }) => void
+): () => void {
+  if (!isElectron) return () => {}
+  return window.reso!.browser.onNavigated?.(cb) ?? (() => {})
+}
+
+export function onBrowserLoading(
+  cb: (payload: { platform: string; loading: boolean }) => void
+): () => void {
+  if (!isElectron) return () => {}
+  return window.reso!.browser.onLoading?.(cb) ?? (() => {})
 }
 
 // ===================== Pengaturan (M2 — JSON store) =====================

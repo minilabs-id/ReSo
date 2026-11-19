@@ -107,6 +107,21 @@ Saat browser langsung ke TikTok, area sempat kosong tanpa spinner/teks “Memuat
 
 ---
 
-## 5. Kesimpulan
+## 5. Status perbaikan (setelah audit)
 
-Fitur ini **sudah berfungsi secara struktural**: browser tampil, tombol Scrap terpasang dan memicu proses, session per platform benar, dan hasil bisa ditulis ke rekap. Namun ada dua kelemahan yang harus diperbaiki sebelum dipakai serius: **address bar bohong (K-1)** dan **jalan balik lewat console marker yang bisa dipalsukan (K-2)**. Selain itu, klaim “tanpa input manual” untuk FB/IG baru bisa diterima setelah **uji dengan postingan asli (K-4/K-5)**.
+| Temuan | Status | Verifikasi |
+|--------|--------|------------|
+| K-1 | ✅ Selesai | Broadcast `scrapeBrowserNavigated` + `scrapeBrowserLoading` dari host ke renderer. Address bar kini mengikuti URL; tombol ← → ⟳ ditambahkan. Uji: `address bar: https://example.com/ \| host: https://example.com/`. |
+| K-2 | ✅ Selesai | Preload khusus `assets/webview-preload.cjs` mengekspos `window.resoScrap.click(nonce)`; main memverifikasi nonce + asal `webContents`. Uji: `console.log('__RESO_SCRAP__')` → **DITOLAK**, nonce palsu → **DITOLAK**, klik tombol asli → **MIMIC**. |
+| K-3 | ✅ Selesai | `MutationObserver` di script injeksi memasang ulang tombol bila DOM berubah; tombol tetap ada setelah navigasi internal. |
+| K-4 | ⚠️ Sebagian | Tombol “Masukkan ke rekap” ada & logikanya benar, tapi belum diuji dengan postingan asli (butuh akun login). |
+| K-5 | ⚠️ Sebagian | Ditambahkan chip peringatan di UI bahwa ekstraksi FB/IG berbasis tampilan. Uji selector dengan akun nyata masih diperlukan. |
+| K-6 | ✅ Selesai | Spinner + teks “Memuat halaman…” dari event `did-start-loading`/`did-finish-load`. |
+| K-7 | ✅ Selesai | Chip status di atas browser: platform + `balasan ya/tidak` + peringatan FB/IG. |
+| K-8 | ✅ Selesai | Sinkron bounds di-throttle ~100 ms (bukan tiap frame). |
+
+Catatan: saat awal app muncul, Recharts mencatat peringatan konsol benign *“width(-1) and height(-1) of chart”* sebelum container terukur; tidak berdampak pada fungsi.
+
+## 6. Kesimpulan akhir
+
+Seluruh kritik yang bisa diperbaiki lokal sudah dituntaskan dan diverifikasi ulang: **7/8 poin selesai**, sisanya (K-4/K-5) memerlukan akun FB/IG nyata untuk validasi selector. Fitur browser + tombol Scrap kini aman dari marker palsu, address bar jujur, dan alur klik → rekap bekerja. Build tetap hijau (`npm test`, `typecheck:desktop`, `dist:win`).

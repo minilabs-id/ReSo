@@ -16,6 +16,12 @@ import {
   closeScrapeBrowser,
   setScrapeBrowserBounds,
   navigateScrapeBrowser,
+  browserBack,
+  browserForward,
+  browserReload,
+  getBrowserNavState,
+  onBrowserNavigated,
+  onBrowserLoading,
   type NameState,
 } from '../../lib/reso-bridge';
 import { filterNames, sortNamesAz, namesToClipboardText } from '../../shared/normalize';
@@ -110,6 +116,8 @@ export default function ScraperPanel({
   const lastBoundsRef = useRef('');
   const [browserUrl, setBrowserUrl] = useState<string>(DEFAULT_URL.tiktok);
   const [browserError, setBrowserError] = useState('');
+  const [browserLoading, setBrowserLoading] = useState(false);
+  const [navState, setNavState] = useState({ canBack: false, canForward: false });
 
   useEffect(() => {
     if (!isElectron) return;
@@ -146,7 +154,17 @@ export default function ScraperPanel({
       await navigateScrapeBrowser(platform, DEFAULT_URL[platform]);
       setBrowserUrl(DEFAULT_URL[platform]);
       setBrowserError('');
+      setNavState(await getBrowserNavState(platform));
     })();
+
+    const offNav = onBrowserNavigated(({ platform: p, url }) => {
+      if (p !== platform) return;
+      setBrowserUrl(url);
+      void getBrowserNavState(platform).then(setNavState);
+    });
+    const offLoading = onBrowserLoading(({ platform: p, loading }) => {
+      if (p === platform) setBrowserLoading(loading);
+    });
 
     const sync = () => {
       const b = bounds();
@@ -156,8 +174,13 @@ export default function ScraperPanel({
       lastBoundsRef.current = key;
       void setScrapeBrowserBounds(b);
     };
-    const loop = () => {
-      sync();
+    // Throttle ~100ms supaya tidak membanjiri IPC saat scroll halus.
+    let lastSync = 0;
+    const loop = (t: number) => {
+      if (t - lastSync > 100) {
+        lastSync = t;
+        sync();
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -168,6 +191,8 @@ export default function ScraperPanel({
       cancelAnimationFrame(raf);
       window.removeEventListener('scroll', sync, true);
       window.removeEventListener('resize', sync);
+      offNav();
+      offLoading();
       void closeScrapeBrowser();
     };
   }, [platform]);
@@ -338,6 +363,36 @@ export default function ScraperPanel({
       {/* Browser internal: buka postingan di sini, lalu klik tombol "Scrap" di halaman. */}
       <Card className="p-4 sm:p-5 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => void browserBack(platform)}
+            disabled={!isElectron || !navState.canBack}
+            aria-label="Kembali"
+            title="Kembali"
+          >
+            ←
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => void browserForward(platform)}
+            disabled={!isElectron || !navState.canForward}
+            aria-label="Maju"
+            title="Maju"
+          >
+            →
+          </Button>
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => void browserReload(platform)}
+            disabled={!isElectron}
+            aria-label="Muat ulang"
+            title="Muat ulang"
+          >
+            ⟳
+          </Button>
           <Input
             value={browserUrl}
             onChange={(e) => setBrowserUrl(e.target.value)}
@@ -366,14 +421,34 @@ export default function ScraperPanel({
           ))}
         </div>
         {browserError && <p className="text-[11px] font-medium text-rose-600">{browserError}</p>}
+        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
+          <span className="rounded-full bg-slate-100 px-2 py-0.5">
+            {PLATFORM_LABEL[platform]} · balasan {includeReplies ? 'ya' : 'tidak'}
+          </span>
+          {platform !== 'tiktok' && (
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
+              Ekstraksi FB/IG berbasis tampilan — pastikan komentar terbuka & sudah login
+            </span>
+          )}
+          {browserLoading && (
+            <span className="flex items-center gap-1.5 text-slate-600">
+              <Loader2 size={12} className="animate-spin" aria-hidden /> Memuat halaman…
+            </span>
+          )}
+        </div>
         <div
           ref={browserRef}
-          className="h-[520px] w-full rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
+          className="relative h-[520px] w-full rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
           aria-label={`Browser ${PLATFORM_LABEL[platform]}`}
         >
           {!isElectron && (
             <div className="flex h-full items-center justify-center px-6 text-center text-[11px] text-slate-500">
               Browser internal hanya tersedia di ReSo Desktop.
+            </div>
+          )}
+          {browserLoading && isElectron && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+              <Loader2 size={22} className="animate-spin text-slate-500" aria-hidden />
             </div>
           )}
         </div>

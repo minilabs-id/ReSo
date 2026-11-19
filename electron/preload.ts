@@ -23,6 +23,23 @@ const api = {
     navigate: (platform: string, url: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC.scrapeNavigate, platform, url),
     getUrl: (platform: string): Promise<string> => ipcRenderer.invoke(IPC.scrapeGetUrl, platform),
+    back: (platform: string): Promise<boolean> => ipcRenderer.invoke(IPC.scrapeBrowserBack, platform),
+    forward: (platform: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.scrapeBrowserForward, platform),
+    reload: (platform: string): Promise<boolean> =>
+      ipcRenderer.invoke(IPC.scrapeBrowserReload, platform),
+    navState: (platform: string): Promise<{ canBack: boolean; canForward: boolean }> =>
+      ipcRenderer.invoke(IPC.scrapeBrowserNavState, platform),
+    onNavigated: (cb: (payload: { platform: string; url: string }) => void): (() => void) => {
+      const listener = (_e: unknown, payload: { platform: string; url: string }) => cb(payload)
+      ipcRenderer.on(IPC.scrapeBrowserNavigated, listener)
+      return () => ipcRenderer.removeListener(IPC.scrapeBrowserNavigated, listener)
+    },
+    onLoading: (cb: (payload: { platform: string; loading: boolean }) => void): (() => void) => {
+      const listener = (_e: unknown, payload: { platform: string; loading: boolean }) => cb(payload)
+      ipcRenderer.on(IPC.scrapeBrowserLoading, listener)
+      return () => ipcRenderer.removeListener(IPC.scrapeBrowserLoading, listener)
+    },
   },
 
   /** Token Meta tidak pernah dikirim ke renderer — status + proxy fetch. */
