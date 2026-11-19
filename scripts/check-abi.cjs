@@ -3,14 +3,16 @@
  * Jalankan: node_modules\electron\dist\electron.exe scripts\check-abi.cjs
  *
  * Stdout Electron di Windows sering tidak terlihat dari shell, jadi hasil
- * ditulis ke berkas `abi-result.txt` (JSON) — itu bukti yang dibaca manusia.
+ * ditulis ke `abi-result.txt` (JSON) di folder sementara sistem (os.tmpdir())
+ * — itu bukti yang dibaca manusia, tanpa mengotori root repo.
  * Keluar 0 kalau modul termuat & query dasar jalan; selain itu keluar 1.
  */
 const { app } = require('electron')
 const { writeFileSync } = require('fs')
+const { tmpdir } = require('os')
 const { join } = require('path')
 
-const OUT = join(__dirname, '..', 'abi-result.txt')
+const OUT = join(tmpdir(), 'abi-result.txt')
 
 function report(ok, detail) {
   try {

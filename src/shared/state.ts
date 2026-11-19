@@ -94,9 +94,16 @@ export function newRunId(): string {
   return `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`
 }
 
-/** Tolak progress/done dari run lain, atau pesan tanpa runId saat run aktif. */
+/**
+ * Tolak progress/done yang tidak cocok dengan run aktif:
+ * - pesan tanpa runId saat run aktif → stale;
+ * - pesan bertanda runId saat TIDAK ada run aktif (state.runId === null) → stale,
+ *   parity dengan reducer yang menolak PROGRESS/DONE bila `event.runId !==
+ *   state.runId` (null vs 'r1' selalu beda);
+ * - runId beda → stale; runId sama → tidak stale.
+ */
 export function isStaleRun(stateRunId: string | null | undefined, msgRunId: string | null | undefined): boolean {
-  if (!stateRunId) return false
+  if (!stateRunId) return !!msgRunId
   if (!msgRunId) return true
   return stateRunId !== msgRunId
 }

@@ -1,3 +1,5 @@
+> ARSIP era web/ekstensi — tidak menggambarkan aplikasi desktop offline saat ini.
+
 # 🚀 Plan Eksekusi Perbaikan UI/UX ReSo
 
 Berdasarkan temuan `UIUX_AUDIT.md`. Dieksekusi bertahap per fase, dengan verifikasi build setiap fase.

@@ -1,3 +1,5 @@
+> ARSIP era web/ekstensi — tidak menggambarkan aplikasi desktop offline saat ini.
+
 # UI/UX Audit – ReSo (arsip era web)
 
 > **Catatan:** dokumen ini mengaudit versi web/Firebase lama. Untuk aplikasi

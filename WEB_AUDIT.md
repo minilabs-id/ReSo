@@ -1,3 +1,5 @@
+> ARSIP era web/ekstensi — tidak menggambarkan aplikasi desktop offline saat ini.
+
 # 🔒 Audit Ketangguhan Web ReSo — anti-hang, race, pola scroll
 
 **Tanggal:** 2026-09-04

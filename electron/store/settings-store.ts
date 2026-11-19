@@ -5,6 +5,20 @@
  * `sanitizeSettingsPatch` supaya renderer tidak bisa menyuntik data kotor.
  */
 import Store from 'electron-store'
+import { app } from 'electron'
+import { copyFileSync, existsSync, readFileSync } from 'fs'
+import { join } from 'path'
+
+/** Simpan salinan berkas korup sebelum electron-store meresetnya. */
+function backupIfInvalid(name: string): void {
+  const file = join(app.getPath('userData'), `${name}.json`)
+  if (!existsSync(file)) return
+  try {
+    JSON.parse(readFileSync(file, 'utf8'))
+  } catch {
+    try { copyFileSync(file, `${file}.bak`) } catch { /* gagal membuat cadangan */ }
+  }
+}
 import {
   SETTINGS_DEFAULTS,
   sanitizeSettingsPatch,
@@ -16,6 +30,7 @@ let store: Store<ResoSettings> | null = null
 /** Lazy init — `app` harus sudah ready saat Store pertama dipakai. */
 function getStore(): Store<ResoSettings> {
   if (!store) {
+    backupIfInvalid('settings')
     store = new Store<ResoSettings>({
       name: 'settings',
       defaults: SETTINGS_DEFAULTS,

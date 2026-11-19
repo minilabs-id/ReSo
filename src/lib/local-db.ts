@@ -347,13 +347,16 @@ export function onSnapshot(
   error?: (e: unknown) => void
 ): () => void {
   let active = true
+  /** Generasi per listener: hasil baca lama listener ini tidak boleh menimpa yang baru. */
+  let generation = 0
 
   const emitOnce = async (): Promise<void> => {
+    const gen = ++generation
     try {
       if (target.kind === 'doc') {
         const rows = await loadRows(target.name)
         const row = rows.find((r) => r.id === target.id)
-        if (!active) return
+        if (!active || gen !== generation) return
         if (row) {
           const { id, ...fields } = row
           next({ ...emptyQuerySnapshot(), id, data: () => fields, exists: () => true } as never)
@@ -363,7 +366,7 @@ export function onSnapshot(
         return
       }
       const rows = await loadRows(target.name)
-      if (!active) return
+      if (!active || gen !== generation) return
       const constraints = target.kind === 'query' ? target.constraints : []
       next(runQuery(target.name, constraints, rows) as never)
     } catch (err) {
@@ -495,6 +498,36 @@ export class WriteBatch {
   async commit(): Promise<void> {
     const writes = this.writes
     this.writes = []
+    if (writes.length === 0) return
+
+    // Semua field final dihitung dulu supaya main bisa menjalankan satu
+    // transaksi SQLite — tulis parsial saat salah satu baris gagal dicegah.
+    const ops: Array<Record<string, unknown>> = []
+    for (const w of writes) {
+      const base: Record<string, unknown> = {
+        collection: w.ref.name,
+        id: w.ref.id,
+      }
+      if (w.type === 'delete') {
+        ops.push({ ...base, delete: true })
+        continue
+      }
+      let data = w.data ?? {}
+      if (w.type === 'update' || w.merge) {
+        data = mergeFields((await getDoc(w.ref)).data(), data)
+      }
+      ops.push({ ...base, data })
+    }
+
+    const b = bridge()
+    if (b?.batchSave) {
+      const res = await b.batchSave(ops)
+      if (!res?.ok) throw new Error(`Gagal menyimpan batch (${res?.reason ?? 'unknown'})`)
+      emit()
+      return
+    }
+
+    // Fallback web / bridge lama: tetap berurutan seperti Firestore shim lama.
     for (const w of writes) {
       if (w.type === 'delete') await deleteDoc(w.ref)
       else if (w.type === 'update') await updateDoc(w.ref, w.data ?? {})

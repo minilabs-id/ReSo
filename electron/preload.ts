@@ -14,6 +14,13 @@ const api = {
     getMeta: () => ipcRenderer.invoke(IPC.appGetMeta),
   },
 
+  /** Token Meta tidak pernah dikirim ke renderer — status + proxy fetch. */
+  meta: {
+    status: (): Promise<{ configured: boolean }> => ipcRenderer.invoke(IPC.metaStatus),
+    request: (path: string, tokenOverride?: string): Promise<unknown> =>
+      ipcRenderer.invoke(IPC.metaRequest, path, tokenOverride),
+  },
+
   settings: {
     get: (): Promise<ResoSettings> => ipcRenderer.invoke(IPC.settingsGet),
     set: (patch: Partial<ResoSettings>): Promise<ResoSettings> =>
@@ -55,6 +62,7 @@ const api = {
     upsertDaily: (date: string, patch: unknown) =>
       ipcRenderer.invoke(IPC.dbUpsertDaily, date, patch),
     stats: () => ipcRenderer.invoke(IPC.dbStats),
+    batchSave: (ops: unknown) => ipcRenderer.invoke(IPC.dbBatchSave, ops),
     listSettings: (): Promise<string[]> => ipcRenderer.invoke(IPC.dbListSettings),
     getSetting: (key: string): Promise<unknown> => ipcRenderer.invoke(IPC.dbGetSetting, key),
     setSetting: (key: string, value: unknown) =>

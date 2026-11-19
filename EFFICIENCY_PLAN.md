@@ -1,3 +1,5 @@
+> ARSIP era web/ekstensi — tidak menggambarkan aplikasi desktop offline saat ini.
+
 # ⚡ Plan Eksekusi Efisiensi – ReSo
 
 Berdasarkan temuan `EFFICIENCY_AUDIT.md`. 4 fase, satu fase = satu commit, build hijau sebelum lanjut.

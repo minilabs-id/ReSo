@@ -1,3 +1,5 @@
+> ARSIP era web/ekstensi — tidak menggambarkan aplikasi desktop offline saat ini.
+
 # ⚡ Audit Efisiensi – ReSo
 
 **Tanggal:** 2026-08-25

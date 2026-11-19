@@ -73,8 +73,13 @@ Export/import seluruh data tersedia lewat layar Pengaturan (backup/restore).
 | `npm run start:desktop` | Preview hasil build Electron |
 | `npm run dist:win` | Build + paket installer NSIS (`release/`) |
 | `npm run typecheck:desktop` | Typecheck main/preload (`electron/tsconfig.json`) |
-| `npm run lint` / `npm run build` | Typecheck / build web (pratinjau, bukan produk) |
 | `npm test` | Semua unit test (matching, DB lokal, API, network) |
+| `npm run test:stress` | Stress test matching ekstrem (lolos; dijalankan terpisah, **tidak** termasuk `npm test`) |
+| `npm run dev` | Dev server Vite — **pratinjau web only**, bukan aplikasi desktop |
+| `npm run build` | Typecheck + build Vite ke `dist/` — **pratinjau web**, bukan produk |
+| `npm run preview` | Preview hasil build Vite di `dist/` — **pratinjau web only** |
+| `npm run lint` | Typecheck via `tsc --noEmit` |
+| `npm run clean` | Saat ini **hanya** menghapus `dist/` (belum `out/`/`release/`; rencana akan diperluas maintainer) |
 
 ## Arsitektur singkat
 

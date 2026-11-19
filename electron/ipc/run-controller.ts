@@ -11,7 +11,16 @@ import { IPC } from '../ipc/contracts'
 import { reduce, parseRunEvent, type RunEvent } from '../../src/shared/run-state'
 import { defaultStateFor } from '../store/state-schema'
 import { clearState, getAllStates, getState, setState } from '../store/state-store'
+import { cancelRun, setMainWindow, startRun } from '../scrape/runner'
 import type { NameState, Platform } from '../../src/shared/types'
+
+/**
+ * main.ts menyuplai jendela utama tempat WebContentsView scraper dipasang.
+ * Dipanggil sekali saat jendela dibuat, dan dengan `null` saat ditutup.
+ */
+export function setScrapeMainWindow(win: BrowserWindow | null): void {
+  setMainWindow(win)
+}
 
 function broadcast(platform: Platform, state: NameState): void {
   for (const win of BrowserWindow.getAllWindows()) {
@@ -34,12 +43,33 @@ export const runController = {
     const event: RunEvent | null = parseRunEvent(rawEvent)
     if (!event) return getState(platform)
 
+    // START: pastikan hanya satu run aktif per platform.
+    if (event.type === 'START') {
+      const current = getState(platform)
+      if (current.status === 'running') {
+        if (current.runId === event.runId) return current // duplikat → abaikan
+        // runId baru menyusul: putus run lama, bersihkan state, lalu START baru.
+        cancelRun(platform)
+        runController.reset(platform)
+      }
+    }
+
     const prev = getState(platform)
     const { state, changed } = reduce(platform, prev, event)
     if (!changed) return prev
 
     setState(platform, state)
     broadcast(platform, state)
+
+    // Efek nyata: START menyalakan engine, STOP memotong run yang berjalan.
+    if (event.type === 'START') {
+      startRun(platform, event.runId, event.includeReplies, (e) =>
+        runController.apply(platform, e)
+      )
+    } else if (event.type === 'STOP') {
+      cancelRun(platform)
+    }
+
     return state
   },
 

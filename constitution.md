@@ -1,3 +1,5 @@
+> ⚠️ **ARSIP era web — BUKAN aturan aktif. Aturan aktif = specify.md #10-#12 (offline, SQLite, Electron NSIS, tanpa login).**
+
 # constitution.md — Aturan yang Tidak Boleh Dilanggar
 
 > **Apa bedanya dengan `specify.md`?**  
@@ -51,7 +53,7 @@ Segala perubahan kode **tidak boleh memutus** alur itu, atau mengubah arti “en
 
 Urutan prioritas saat ragu:
 
-1. **Hukum produk** di `specify.md` (tujuan, skor, window 15:00, Diskominfo, operator-only)
+1. **Hukum produk di `specify.md` — khususnya #10–#12 = ATURAN AKTIF yang menimpa `constitution.md` ini** (offline, SQLite lokal, installer Electron NSIS, tanpa login); bila bentrok dengan isi dokumen ini, **#10–#12 yang menang**. (tujuan, skor, window 15:00, Diskominfo, operator-only)
 2. **Hukum constitution ini** (aman, data, deploy, cara kerja agent)
 3. **Kode & UI yang sudah jalan** (jangan rusak yang sudah dipakai operator)
 4. **Preferensi teknis AI / “biar keren”** — prioritas paling rendah

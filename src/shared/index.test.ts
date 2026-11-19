@@ -9,6 +9,7 @@ import { detectPlatform, extractFbFeedbackIds, extractInstagramShortcode, extrac
 import { parseTikTokComments, parseIgComments, extractGraphqlNames } from './parsers'
 import { sanitizeTikTokTemplateUrl, isTikTokTemplateValid, sanitizeInstagramTemplateUrl, isInstagramTemplateValid, sanitizeEngineOptions, TEMPLATE_TTL_MS } from './template'
 import { applyStatePatch, defaultStateFor, newRunId, isStaleRun } from './state'
+import { reduce } from './run-state'
 import { doneMessage } from './messages'
 
 let n = 0
@@ -185,10 +186,30 @@ eq(patched.names, ['Andi'], 'patch dedupe nama')
 eq(patched.count, 1, 'patch hitung ulang count')
 ok(patched.updatedAt > 0, 'patch set updatedAt')
 ok(newRunId() !== newRunId(), 'runId unik')
-eq(isStaleRun(null, 'x'), false, 'stale: tanpa run aktif')
+eq(isStaleRun(null, 'x'), true, 'stale: state tanpa run aktif + pesan bertanda run')
+eq(isStaleRun(null, null), false, 'tidak stale: state dan pesan tanpa runId')
 eq(isStaleRun('a', null), true, 'stale: pesan tanpa runId')
 eq(isStaleRun('a', 'b'), true, 'stale: runId beda')
 eq(isStaleRun('a', 'a'), false, 'stale: runId sama')
+
+// cross-check: isStaleRun HARUS sejalan dengan keputusan reducer (parity race tab)
+{
+  const idle = defaultStateFor('facebook') // runId = null
+  const intruder = { type: 'PROGRESS' as const, runId: 'r1', names: ['Penyusup'] }
+  eq(isStaleRun(idle.runId, intruder.runId), true, 'idle: isStaleRun menandai intruder stale')
+  eq(reduce('facebook', idle, intruder).changed, false, 'idle: reducer menolak PROGRESS dari run lain')
+  eq(
+    reduce('facebook', idle, { type: 'DONE', runId: 'r1', reason: 'complete' }).changed,
+    false,
+    'idle: reducer menolak DONE dari run lain'
+  )
+
+  const active = reduce('facebook', idle, { type: 'START', runId: 'r1', includeReplies: true }).state
+  eq(isStaleRun(active.runId, 'r1'), false, 'aktif: runId sama tidak stale')
+  eq(reduce('facebook', active, { type: 'PROGRESS', runId: 'r1', names: ['Andi'] }).changed, true, 'aktif: reducer menerima PROGRESS runId sama')
+  eq(isStaleRun(active.runId, 'r2'), true, 'aktif: runId beda stale')
+  eq(reduce('facebook', active, { type: 'PROGRESS', runId: 'r2', names: ['Penyusup'] }).changed, false, 'aktif: reducer menolak PROGRESS runId beda')
+}
 
 // ===================== messages =====================
 ok(doneMessage('complete', 12, 'tiktok').includes('12'), 'pesan selesai memuat jumlah')

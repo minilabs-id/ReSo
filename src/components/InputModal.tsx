@@ -12,6 +12,7 @@ import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { ConfirmDialog } from './ui/confirm-dialog';
 import { parseLocalISODate, addLocalDays } from '../lib/date';
+import { metaRequest } from '../lib/reso-bridge';
 import { matchEmployeesToEngagement, matchEngagementDetail, engagedIdsEqual, mergeUniqueLines } from '../lib/matching';
 import type { DailyEngagement, Employee, UnmatchedName } from '../types';
 
@@ -22,6 +23,8 @@ interface InputModalProps {
   existing?: DailyEngagement;
   employees: Employee[];
   metaToken: string;
+  /** Token asli dipegang main; renderer hanya tahu apakah sudah diatur. */
+  hasMetaToken: boolean;
   postedAt: string[];
   unmatchedCount: number;
   onClose: () => void;
@@ -55,6 +58,7 @@ export function InputModal({
   existing,
   employees,
   metaToken,
+  hasMetaToken,
   postedAt,
   unmatchedCount,
   onClose,
@@ -216,8 +220,18 @@ export function InputModal({
     metaFetchRef.current = { controller, timeoutId };
 
     try {
-      const token = metaToken.trim();
-      if (!token) throw new Error("Token API Meta tidak boleh kosong.");
+      if (!hasMetaToken) throw new Error('Token Meta belum diatur di Pengaturan.');
+
+      /** Fetch Graph API lewat main: token tidak pernah masuk URL/renderer. */
+      const metaFetch = async (path: string, tokenOverride?: string): Promise<any> => {
+        if (controller.signal.aborted) throw new Error('Fetch dibatalkan');
+        const data = await metaRequest(path, tokenOverride);
+        if (data && typeof data === 'object' && 'error' in data) {
+          const message = (data as { error?: { message?: string } }).error?.message;
+          if (message) throw new Error(message);
+        }
+        return data;
+      };
 
       // Window rekap resmi: 15:00 H-1 s/d 15:00 D (WIB) = UTC 08:00
       // Batas eksklusif di start (hindari double-count tepat 15:00), inklusif di end.
@@ -234,37 +248,34 @@ export function InputModal({
       type MetaPost = { id: string; created_time?: string; timestamp?: string; permalink_url?: string; permalink?: string };
       let fbPosts: MetaPost[] = [];
       let igPosts: MetaPost[] = [];
-      let pageToken = token;
+      // undefined = pakai token user dari main; token page hasil resolve jadi override.
+      let pageToken: string | undefined;
       let pageId = "me";
 
       // Resolve Page Token
       try {
-        const accRes = await fetch(`https://graph.facebook.com/v19.0/me/accounts?access_token=${token}`, { signal: controller.signal });
-        const accData = await accRes.json();
+        const accData = await metaFetch('/me/accounts');
         if (accData.data && accData.data.length > 0) {
           pageId = accData.data[0].id;
           pageToken = accData.data[0].access_token;
         } else {
-          const debugRes = await fetch(`https://graph.facebook.com/v19.0/debug_token?input_token=${token}&access_token=${token}`, { signal: controller.signal });
-          const debugData = await debugRes.json();
+          const debugData = await metaFetch('/debug_token');
           if (debugData.data && debugData.data.granular_scopes) {
             const scope = debugData.data.granular_scopes.find((s: { scope: string; target_ids?: string[] }) =>
               s.scope === 'pages_show_list' || s.scope === 'pages_read_engagement' || s.scope === 'pages_manage_posts'
             );
             if (scope && scope.target_ids && scope.target_ids.length > 0) {
               pageId = scope.target_ids[0];
-              const pageRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=access_token&access_token=${token}`, { signal: controller.signal });
-              const pageData = await pageRes.json();
+              const pageData = await metaFetch(`/${pageId}?fields=access_token`);
               if (pageData.access_token) pageToken = pageData.access_token;
             }
           }
         }
       } catch {
-        // Bukan user token — lanjut dengan token asli
+        // Bukan user token — lanjut dengan token dari main process
       }
 
-      const fbPostsRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}/posts?fields=id,created_time,permalink_url&access_token=${pageToken}&limit=50`, { signal: controller.signal });
-      const fbPostsData = await fbPostsRes.json();
+      const fbPostsData = await metaFetch(`/${pageId}/posts?fields=id,created_time,permalink_url&limit=50`, pageToken);
       let latestFbPostDate: string | null = null;
 
       if (!fbPostsData.error && fbPostsData.data) {
@@ -272,13 +283,11 @@ export function InputModal({
         fbPosts = fbPostsData.data.filter((p: MetaPost) => isWithinCustomWindow(p.created_time || '', date));
       }
 
-      const igAccRes = await fetch(`https://graph.facebook.com/v19.0/${pageId}?fields=instagram_business_account&access_token=${pageToken}`, { signal: controller.signal });
-      const igAccData = await igAccRes.json();
+      const igAccData = await metaFetch(`/${pageId}?fields=instagram_business_account`, pageToken);
       const igAccountId = igAccData.instagram_business_account?.id as string | undefined;
 
       if (igAccountId) {
-        const igPostsRes = await fetch(`https://graph.facebook.com/v19.0/${igAccountId}/media?fields=id,timestamp,permalink&access_token=${pageToken}&limit=50`, { signal: controller.signal });
-        const igPostsData = await igPostsRes.json();
+        const igPostsData = await metaFetch(`/${igAccountId}/media?fields=id,timestamp,permalink&limit=50`, pageToken);
         if (!igPostsData.error && igPostsData.data) {
           igPosts = igPostsData.data.filter((p: MetaPost) => isWithinCustomWindow(p.timestamp || '', date));
         }
@@ -299,8 +308,8 @@ export function InputModal({
         const batchPosts = igPosts.slice(i, i + CONCURRENCY);
         const commentsBatches = await Promise.all(
           batchPosts.map((post) =>
-            fetch(`https://graph.facebook.com/v19.0/${post.id}/comments?fields=id,text,username,timestamp&access_token=${pageToken}&limit=100`, { signal: controller.signal })
-              .then((res) => res.json() as Promise<IgComment>)
+            metaFetch(`/${post.id}/comments?fields=id,text,username,timestamp&limit=100`, pageToken)
+              .then((data) => data as IgComment)
               .catch(() => ({ data: [] }) as IgComment)
           )
         );
@@ -428,28 +437,29 @@ export function InputModal({
       }
 
       // Antrian nama belum terpetakan: platform berubah dihitung ulang, lainnya
-      // dipertahankan dari dokumen (dedupe case-insensitive).
-      const prevUnmatched = Array.isArray(existing?.unmatchedNames)
-        ? (existing.unmatchedNames as UnmatchedName[])
-        : [];
-      const seenU = new Set<string>();
-      const unmatchedNames: UnmatchedName[] = [];
-      const pushU = (u: UnmatchedName) => {
-        const key = `${u.name.trim().toLowerCase()}|${u.platform}`;
-        if (seenU.has(key)) return;
-        seenU.add(key);
-        unmatchedNames.push(u);
-      };
-      for (const p of ['ig', 'fb', 'tiktok'] as const) {
-        const changed = p === 'ig' ? igChanged : p === 'fb' ? fbChanged : tiktokChanged;
-        if (changed) {
-          const raw = p === 'ig' ? currentIgRawInput : p === 'fb' ? currentFbRawInput : currentTiktokRawInput;
-          for (const name of matchEngagementDetail(raw, employees, p).unmatched) pushU({ name, platform: p });
-        } else {
-          for (const u of prevUnmatched) if (u.platform === p) pushU(u);
+      // dipertahankan dari dokumen TERBARU (bukan prop yang bisa basi).
+      const buildUnmatched = (source?: DailyEngagement): UnmatchedName[] => {
+        const prev = Array.isArray(source?.unmatchedNames) ? source!.unmatchedNames! : [];
+        const seen = new Set<string>();
+        const result: UnmatchedName[] = [];
+        const push = (u: UnmatchedName) => {
+          const key = `${u.name.trim().toLowerCase()}|${u.platform}`;
+          if (seen.has(key)) return;
+          seen.add(key);
+          result.push(u);
+        };
+        for (const p of ['ig', 'fb', 'tiktok'] as const) {
+          const changed = p === 'ig' ? igChanged : p === 'fb' ? fbChanged : tiktokChanged;
+          if (changed) {
+            const raw = p === 'ig' ? currentIgRawInput : p === 'fb' ? currentFbRawInput : currentTiktokRawInput;
+            for (const name of matchEngagementDetail(raw, employees, p).unmatched) push({ name, platform: p });
+          } else {
+            for (const u of prev) if (u.platform === p) push(u);
+          }
         }
-      }
-      updateData.unmatchedNames = unmatchedNames;
+        return result;
+      };
+      updateData.unmatchedNames = buildUnmatched(existing);
 
       await runTransaction(db, async (tx) => {
         // Baca snapshot terbaru untuk hindari last-write-wins dengan extension
@@ -473,6 +483,9 @@ export function InputModal({
           if (latest.tiktokEngagedEmployeeIds !== undefined) merged.tiktokEngagedEmployeeIds = latest.tiktokEngagedEmployeeIds;
           if (latest.tiktokLinks !== undefined) merged.tiktokLinks = latest.tiktokLinks;
         }
+        // Hitung ulang antrian dari snapshot terbaru agar auto-fill yang masuk
+        // selagi modal terbuka tidak hilang.
+        merged.unmatchedNames = buildUnmatched(latest);
         // Firestore menolak undefined — sanitasi terakhir sebelum set
         for (const k of Object.keys(merged)) if (merged[k] === undefined) delete merged[k];
         tx.set(docRef, merged, { merge: true });
@@ -591,16 +604,16 @@ export function InputModal({
                   <div className="space-y-1.5 border-t border-slate-100 px-3 py-2.5">
                     <Button
                       onClick={handleFetchRecentMeta}
-                      disabled={isFetchingMeta || !metaToken.trim()}
+                      disabled={isFetchingMeta || !hasMetaToken}
                       className="h-8 w-full rounded-lg bg-slate-900 text-[11px] font-bold text-white hover:bg-slate-800"
                     >
                       {isFetchingMeta
                         ? 'Menarik data…'
-                        : !metaToken.trim()
+                        : !hasMetaToken
                           ? 'Token belum diatur'
                           : `Tarik post (${parseLocalISODate(addLocalDays(date, -1)).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} → ${parseLocalISODate(date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })})`}
                     </Button>
-                    {!metaToken.trim() ? (
+                    {!hasMetaToken ? (
                       <button
                         type="button"
                         onClick={() => requestClose(true)}

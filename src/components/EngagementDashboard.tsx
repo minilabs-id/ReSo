@@ -28,10 +28,11 @@ import { useAppLogo } from '../hooks/useAppLogo';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { onSnapshot, query, orderBy, setDoc, serverTimestamp, writeBatch, where, updateDoc, arrayUnion, dinasCollection, dinasDoc } from '../lib/local-db';
 import { cn } from '@/lib/utils';
-import { getLocalISODate, parseLocalISODate } from '../lib/date';
+import { getLocalISODate, parseLocalISODate, addWibDays } from '../lib/date';
 import { matchEmployeesToEngagement, matchEngagementDetail, engagedIdsEqual } from '../lib/matching';
 import { collectUnverifiedAutoFilled } from '../lib/engagement-api';
 import { APP_VERSION } from '../lib/version';
+import { getMetaStatus, isElectron } from '../lib/reso-bridge';
 
 import { DashboardTab } from './tabs/DashboardTab';
 import { InputModal } from './InputModal';
@@ -103,28 +104,25 @@ export default function EngagementDashboard() {
   });
   const [recalcResult, setRecalcResult] = useState<string | null>(null);
 
-  // Meta API State
+  // Token Meta dipegang main process; renderer hanya tahu statusnya.
   const [metaToken, setMetaToken] = useState('');
+  const [hasMetaToken, setHasMetaToken] = useState(false);
   const [isSavingToken, setIsSavingToken] = useState(false);
 
-  // Load Meta Token from Firestore on mount
   useEffect(() => {
-    if (loading || !user) return;
-
-    const unsubscribe = onSnapshot(
-      dinasDoc(db, user.uid, 'settings', 'meta_api'),
-      (docSnap) => {
-        if (docSnap.exists()) {
-          setMetaToken(String(docSnap.data()?.value ?? ''));
-        }
-      },
-      (err) => {
-        console.error('Gagal memuat token Meta:', err);
-      }
-    );
-
-    return unsubscribe;
-  }, [user, loading]);
+    if (!isElectron) return;
+    let active = true;
+    const load = async () => {
+      const status = await getMetaStatus();
+      if (active) setHasMetaToken(status.configured);
+    };
+    void load();
+    const unsubscribe = window.reso?.data.onChanged?.(() => void load());
+    return () => {
+      active = false;
+      unsubscribe?.();
+    };
+  }, []);
 
   const handleSaveMetaToken = async () => {
     if (!user) return;
@@ -475,7 +473,8 @@ export default function EngagementDashboard() {
         if (e) {
           totalActual += (e.igEngagedEmployeeIds?.includes(emp.id) ? 1 : 0) + (e.fbEngagedEmployeeIds?.includes(emp.id) ? 1 : 0) + (e.tiktokEngagedEmployeeIds?.includes(emp.id) ? 1 : 0);
         }
-        totalPossible += 3;
+        // Tanggal depan belum tersedia — jangan hitung denominator/rate.
+        if (dates[0] <= todayStr) totalPossible += 3;
         rows.push({
           _empId: emp.id,
           name: emp.name,
@@ -959,13 +958,11 @@ export default function EngagementDashboard() {
 
     setIsRecalculating(true);
     try {
-      const dateBoundaryStart = new Date();
-      if (recalculateConfig.mode === 'last_day') {
-        dateBoundaryStart.setDate(dateBoundaryStart.getDate() - 1);
-      } else if (recalculateConfig.mode === 'last_week') {
-        dateBoundaryStart.setDate(dateBoundaryStart.getDate() - 7);
-      }
-      const isoBoundaryStart = getLocalISODate(dateBoundaryStart);
+      // "1 hari" = hari ini saja; "1 minggu" = 7 hari termasuk hari ini (WIB).
+      const todayWib = getLocalISODate(new Date());
+      const isoBoundaryStart = recalculateConfig.mode === 'last_week'
+        ? addWibDays(todayWib, -6)
+        : todayWib;
 
       const engagementsToProcess = dailyEngagements.filter(e => e.date >= isoBoundaryStart);
       if (engagementsToProcess.length === 0) {
@@ -1103,8 +1100,10 @@ export default function EngagementDashboard() {
     }
 
     // Calculate ISO week number
+    // Weekday dihitung dari tanggal WIB, bukan zona lokal mesin.
+    const mondayISO = getLocalISODate(monday);
     const target = new Date(monday.valueOf());
-    const dayNr = (monday.getDay() + 6) % 7;
+    const dayNr = (new Date(`${mondayISO}T00:00:00Z`).getUTCDay() + 6) % 7;
     target.setDate(target.getDate() - dayNr + 3);
     const firstThursday = target.valueOf();
     target.setMonth(0, 1);
@@ -1116,8 +1115,8 @@ export default function EngagementDashboard() {
 
     return [{
       weekNumber: weekNum,
-      monthName: monday.toLocaleDateString('id-ID', { month: 'long' }),
-      year: monday.getFullYear(),
+      monthName: parseLocalISODate(mondayISO).toLocaleDateString('id-ID', { month: 'long', timeZone: 'Asia/Jakarta' }),
+      year: Number(mondayISO.slice(0, 4)),
       weekRange: `${parseLocalISODate(weekDates[0]).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} - ${parseLocalISODate(weekDates[6]).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}`,
       dates: weekDates,
       isCurrentWeek: weekDates.includes(todayStr)
@@ -1725,6 +1724,7 @@ export default function EngagementDashboard() {
                     existing={dailyEngagementsMap[selectedDate]}
                     employees={employees}
                     metaToken={metaToken}
+                    hasMetaToken={hasMetaToken}
                     postedAt={selectedPostedAt}
                     unmatchedCount={selectedUnmatched.length}
                     onClose={closeInputModal}
@@ -1911,6 +1911,7 @@ export default function EngagementDashboard() {
                 containerVariants={containerVariants}
                 metaToken={metaToken}
                 setMetaToken={setMetaToken}
+                metaConfigured={hasMetaToken}
                 handleSaveMetaToken={handleSaveMetaToken}
                 handleClearMetaToken={handleClearMetaToken}
                 onOpenScraper={() => setActiveTab('scraper')}

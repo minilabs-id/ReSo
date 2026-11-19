@@ -1,3 +1,5 @@
+> ARSIP era web/ekstensi — tidak menggambarkan aplikasi desktop offline saat ini.
+
 /**
  * Peta port `tmp-shared.js` → `src/shared/*` (M3).
  *

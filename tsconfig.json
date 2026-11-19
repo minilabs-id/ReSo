@@ -23,5 +23,7 @@
     },
     "allowImportingTsExtensions": true,
     "noEmit": true
-  }
+  },
+  "include": ["src/**/*", "electron/**/*", "*.config.ts"],
+  "exclude": ["node_modules", "dist", "out", "release", "api", ".minicode"]
 }

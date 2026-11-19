@@ -1,3 +1,5 @@
+> ARSIP era web/ekstensi — tidak menggambarkan aplikasi desktop offline saat ini.
+
 # Extension Audit — ReSo Ekstention (Manifest V3)
 
 **Tanggal:** 2026-08-25  

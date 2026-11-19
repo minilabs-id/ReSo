@@ -130,13 +130,24 @@ export function buildEngagementPatch(
   // meleset: existing ber-koma/titik-koma → overcount (dianggap baru padahal
   // merge mendedupe), spasi ganda → undercount (dianggap duplikat padahal
   // merge menambah baris).
-  const beforeKeys = new Set(
+  // Set kerja DIPERBARUI saat iterasi, persis seperti `seen` di mergeUniqueLines.
+  // Kalau hanya dibaca (tidak di-update), duplikat DALAM satu kiriman lolos semua
+  // sebagai "baru": clean=['Andi','Andi','Budi'] + before kosong → added=3,
+  // padahal merge cuma menambah 2 baris. SKIP bila key sudah ada (dari before
+  // ATAU dari entri clean sebelumnya); itu dihitung sebagai existing.
+  const mergedKeys = new Set(
     before
       .split(/[\n,;]+/)
       .map((l) => l.trim().toLowerCase())
       .filter(Boolean)
   );
-  const added = clean.filter((n) => !beforeKeys.has(n.trim().toLowerCase())).length;
+  let added = 0;
+  for (const name of clean) {
+    const key = name.trim().toLowerCase();
+    if (mergedKeys.has(key)) continue;
+    mergedKeys.add(key);
+    added += 1;
+  }
   const existingCount = clean.length - added;
 
   return {

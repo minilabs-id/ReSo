@@ -107,6 +107,14 @@ interface ResoDataBridge {
   deleteSetting?: (key: string) => Promise<{ ok: boolean }>
   /** Berlangganan siaran perubahan data dari main process. */
   onChanged?: (cb: () => void) => () => void
+  /** Tulis beberapa baris dalam satu transaksi SQLite. */
+  batchSave?: (ops: unknown) => Promise<{ ok: boolean; reason?: string }>
+}
+
+/** Token Meta dipegang main process; renderer hanya tahu status & meminta fetch. */
+export interface ResoMetaBridge {
+  status: () => Promise<{ configured: boolean }>
+  request: (path: string, tokenOverride?: string) => Promise<unknown>
 }
 
 declare global {
@@ -114,6 +122,7 @@ declare global {
     reso?: {
       platform: 'electron'
       app: { getMeta: () => Promise<ResoAppMeta> }
+      meta: ResoMetaBridge
       settings: ResoSettingsBridge
       data: ResoDataBridge
       scrape: {
@@ -132,6 +141,22 @@ declare global {
 
 export const isElectron =
   typeof window !== 'undefined' && window.reso?.platform === 'electron'
+
+/** Token tidak pernah dikirim ke renderer — hanya statusnya. */
+export async function getMetaStatus(): Promise<{ configured: boolean }> {
+  if (!isElectron) return { configured: false }
+  try {
+    return await window.reso!.meta.status()
+  } catch {
+    return { configured: false }
+  }
+}
+
+/** Proxy fetch Graph API lewat main process (token disisipkan sebagai Bearer). */
+export async function metaRequest(path: string, tokenOverride?: string): Promise<unknown> {
+  if (!isElectron) throw new Error('Meta API hanya tersedia di aplikasi desktop')
+  return window.reso!.meta.request(path, tokenOverride)
+}
 
 // ===================== Pengaturan (M2 — JSON store) =====================
 

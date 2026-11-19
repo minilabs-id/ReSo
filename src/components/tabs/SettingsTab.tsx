@@ -44,6 +44,8 @@ interface SettingsTabProps {
   containerVariants: import('motion/react').Variants;
   metaToken: string;
   setMetaToken: (v: string) => void;
+  /** Token asli dipegang main; UI hanya tahu apakah sudah tersimpan. */
+  metaConfigured?: boolean;
   /** Kompatibel dengan pemanggil lama. Token kini ditulis lokal oleh komponen ini. */
   handleSaveMetaToken?: () => void | Promise<void>;
   handleClearMetaToken?: () => void | Promise<void>;
@@ -67,9 +69,9 @@ const DEFAULT_SCRAPER_SETTINGS: ResoSettings = {
 
 /** Batas wajar untuk input numerik (sama dengan sanitasi di main process). */
 const NUMERIC_LIMITS = {
-  maxScrollRounds: { min: 0, max: 200, label: 'Putaran scroll' },
-  scrollDelayMs: { min: 0, max: 10_000, label: 'Jeda scroll (ms)' },
-  captureTimeoutMs: { min: 0, max: 900_000, label: 'Batas waktu (ms)' },
+  maxScrollRounds: { min: 1, max: 200, label: 'Putaran scroll' },
+  scrollDelayMs: { min: 200, max: 10_000, label: 'Jeda scroll (ms)' },
+  captureTimeoutMs: { min: 5_000, max: 900_000, label: 'Batas waktu (ms)' },
 } as const;
 
 export const SettingsTab: React.FC<SettingsTabProps> = ({
@@ -80,13 +82,14 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   containerVariants,
   metaToken,
   setMetaToken,
+  metaConfigured = false,
   isSavingToken,
   recalcResult,
   onOpenScraper,
 }) => {
   const { user, db, hasDatabase } = useAuth();
   const [showToken, setShowToken] = useState(false);
-  const [tokenSaved, setTokenSaved] = useState(false);
+
   const [savingTokenLocal, setSavingTokenLocal] = useState(false);
   const [clearTokenConfirm, setClearTokenConfirm] = useState(false);
   const [recalcConfirm, setRecalcConfirm] = useState(false);
@@ -98,6 +101,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [pendingImport, setPendingImport] = useState<{
     employees: LocalEmployee[];
     daily: LocalDaily[];
+    settings?: Record<string, unknown>;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -124,21 +128,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     void refreshStats();
   }, []);
 
-  // --- Status "Tersimpan" token: baca dari penyimpanan lokal ---
-  const loadTokenSaved = async () => {
-    if (!user || !db) return;
-    try {
-      const snap = await getDoc(dinasDoc(db, user.uid, 'settings', 'meta_api'));
-      setTokenSaved(!!String(snap.data()?.value ?? '').trim());
-    } catch {
-      // ignore
-    }
-  };
-
-  useEffect(() => {
-    void loadTokenSaved();
-    // `metaToken` ikut dipantau agar chip tetap sinkron dengan state induk.
-  }, [user, db, metaToken]);
+  // Status "Tersimpan" berasal dari main (token tidak pernah dikirim ke renderer).
+  const tokenSaved = metaConfigured;
 
   // --- Preferensi scraper ---
   useEffect(() => {
@@ -204,9 +195,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         value: trimmed,
         updatedAt: serverTimestamp(),
       });
-      setMetaToken(trimmed);
-      await loadTokenSaved();
-      toast.success('Token tersimpan secara lokal');
+      setMetaToken('');
+      toast.success('Token tersimpan lokal (terenkripsi)');
     } catch {
       toast.error('Gagal menyimpan token secara lokal');
     } finally {
@@ -224,7 +214,6 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         updatedAt: serverTimestamp(),
       });
       setMetaToken('');
-      await loadTokenSaved();
       toast.success('Token dihapus dari penyimpanan lokal');
     } catch {
       toast.error('Gagal menghapus token');
@@ -266,6 +255,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       const parsed = JSON.parse(await file.text()) as {
         employees?: unknown;
         daily?: unknown;
+        settings?: unknown;
       };
       if (!Array.isArray(parsed.employees) || !Array.isArray(parsed.daily)) {
         toast.error('Format tidak valid — berkas harus berisi "employees" dan "daily".');
@@ -274,6 +264,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       setPendingImport({
         employees: parsed.employees as LocalEmployee[],
         daily: parsed.daily as LocalDaily[],
+        settings: parsed.settings && typeof parsed.settings === 'object'
+          ? parsed.settings as Record<string, unknown>
+          : undefined,
       });
       setImportConfirm(true);
     } catch {
@@ -607,6 +600,9 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 >
                   <Upload size={14} /> Pulihkan data
                 </Button>
+                <p className="w-full text-[11px] font-medium text-amber-700">
+                  Cadangan JSON memuat token Meta — simpan di lokasi terlindungi.
+                </p>
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -635,8 +631,8 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             >
               <div className="flex flex-col gap-2 w-full">
                 <p className="text-[11px] leading-relaxed text-slate-500">
-                  Menghitung ulang pencocokan untuk <b>1 hari terakhir</b> atau{' '}
-                  <b>1 minggu terakhir</b>. Proses ini akan{' '}
+                  Menghitung ulang pencocokan untuk <b>hari ini (1 hari)</b> atau{' '}
+                  <b>7 hari terakhir termasuk hari ini</b>. Proses ini akan{' '}
                   <b className="text-rose-600">menimpa rekap</b> yang sudah ada pada rentang
                   tanggal tersebut.
                 </p>
@@ -742,14 +738,13 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <NumberField label="Putaran scroll maks." field="maxScrollRounds" title="1–200" />
-                <NumberField label="Jeda scroll (ms)" field="scrollDelayMs" title="0–10000" />
-                <NumberField label="Batas waktu (ms)" field="captureTimeoutMs" title="0–900000" />
+                <NumberField label="Jeda scroll (ms)" field="scrollDelayMs" title="200–10000" />
+                <NumberField label="Batas waktu (ms)" field="captureTimeoutMs" title="5000–900000" />
               </div>
-              <div className="flex flex-wrap gap-x-5 gap-y-2">
-                <BooleanField label="Jalankan saat login" field="launchAtLogin" />
-                <BooleanField label="Minimalkan ke tray" field="minimizeToTray" />
-                <BooleanField label="Kirim otomatis ke ReSo" field="autoSendToReso" />
-              </div>
+              <p className="text-[11px] text-slate-500">
+                Aplikasi offline tidak memakai opsi login otomatis, tray, atau kirim ke server —
+                hasil scraper disalin/manual dan disimpan lokal di mesin ini.
+              </p>
               <div className="flex items-center gap-2 flex-wrap">
                 <Button
                   onClick={handleSaveScraperSettings}

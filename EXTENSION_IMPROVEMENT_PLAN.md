@@ -1,3 +1,5 @@
+> ARSIP era web/ekstensi — tidak menggambarkan aplikasi desktop offline saat ini.
+
 # Extension Improvement Plan — Auto-Load Komentar Lengkap
 
 **Tanggal:** 2026-08-25

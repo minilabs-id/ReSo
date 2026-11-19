@@ -116,6 +116,39 @@ function ok(msg: string) {
   ok('statistik added/existing konsisten dengan merge');
 }
 
+// ---- REGRESI: duplikat DALAM satu kiriman tidak boleh semua dihitung "baru" ----
+{
+  // before kosong, kiriman mengandung 'Andi' dua kali → merge hanya menambah
+  // 2 baris unik, jadi added=2 (bukan 3) dan existing=1 (duplikat ke-2).
+  const r = buildEngagementPatch(
+    null,
+    'facebook',
+    ['Andi', 'Andi', 'Budi'],
+    employees,
+    '2026-08-17',
+  )!;
+  assert(r.patch.fbRawText === 'Andi\nBudi', 'duplikat dalam kiriman di-dedupe merge');
+  assert(r.added === 2 && r.existing === 1, 'added=2, existing=1 (duplikat within-batch)');
+  assert(r.added + r.existing === 3, 'added + existing tetap sama dengan jumlah nama bersih');
+
+  // Duplikat yang sudah ada di before ikut dihitung existing (2), hanya 'Budi'
+  // yang benar-benar baru.
+  const r2 = buildEngagementPatch(
+    { fbRawText: 'Andi Wijaya' },
+    'facebook',
+    ['Andi Wijaya', 'andi wijaya', 'Budi Santoso FB'],
+    employees,
+    '2026-08-17',
+  )!;
+  assert(r2.patch.fbRawText === 'Andi Wijaya\nBudi Santoso FB', 'before + kiriman di-dedupe');
+  assert(r2.added === 1 && r2.existing === 2, 'before Andi + 2 duplikat → added=1, existing=2');
+
+  // Tiga kali nama yang sama, before kosong → satu baris baru, dua dianggap existing.
+  const r3 = buildEngagementPatch(null, 'facebook', ['Siti', 'Siti', 'SITI'], employees, '2026-08-17')!;
+  assert(r3.added === 1 && r3.existing === 2, 'tiga duplikat identik → added=1, existing=2');
+  ok('regresi: duplikat within-batch tidak overcount added');
+}
+
 // ---- validasi input ----
 {
   assert(buildEngagementPatch(null, 'facebook', [], employees, '2026-08-17') === null, 'names kosong → null');

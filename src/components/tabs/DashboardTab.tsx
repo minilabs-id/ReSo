@@ -146,7 +146,7 @@ export const DashboardTab = ({
         <StatCard title="Total Pegawai" value={fmt(stats.totalEmployees)} icon={<Users2 size={18} />} color="violet" subtitle="Master data pegawai" />
         <StatCard title="Rekap Hari Ini" value={fmt(stats.todayCount)} icon={<Activity size={18} />} color="emerald" subtitle="Total interaksi (IG+FB+TT)" />
         <StatCard title="Total Interaksi" value={fmt(stats.totalEngagements)} icon={<TrendingUp size={18} />} color="sky" subtitle="Akumulasi semua rekap" />
-        <StatCard title="Engagement Rate" value={`${fmt(stats.engagementRate)}%`} icon={<CheckCircle2 size={18} />} color="rose" subtitle="Pegawai unik engage hari ini" />
+        <StatCard title="Pegawai aktif hari ini" value={`${fmt(stats.engagementRate)}%`} icon={<CheckCircle2 size={18} />} color="rose" subtitle="Unik, dari total pegawai — beda dengan % ENG laporan" />
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

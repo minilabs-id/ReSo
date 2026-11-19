@@ -28,11 +28,32 @@ function stripAt(handle: string): string {
   return handle.replace(/^@+/, '');
 }
 
+/** Normalisasi satu field identitas: strip @ dulu, lalu lowercase + collapse whitespace. */
+function normalizeField(value: string | undefined): string {
+  return normalizeMatchText(stripAt(value || ''));
+}
+
+/** Escape karakter regex supaya needle diperlakukan literal. */
+function escapeRegExp(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 /**
- * Match needle in haystack.
- * - exact equality always matches
- * - short tokens (< 3 chars): only whole-token / equality (kurangi false positive)
- * - longer tokens: substring includes (paste dari sosmed sering “kotor”)
+ * Karakter yang dianggap bagian dari token: huruf Unicode, angka, dan `_`.
+ * `_` sengaja ikut token supaya handle seperti `budi_s` tidak kecocokan dengan
+ * `budi` (dan sebaliknya). Selain itu (`@`, `.`, spasi, tanda baca, dll.)
+ * adalah boundary — `@` sengaja boundary agar handle yang sudah di-strip @
+ * tetap cocok dengan baris "@budi_s".
+ */
+const TOKEN_CHAR = '\\p{L}\\p{N}_';
+
+/**
+ * Match needle ke haystack dengan boundary di kedua ujung.
+ * - exact equality selalu match
+ * - token pendek (< 3 char): whole-token saja (perilaku lama dipertahankan)
+ * - token panjang: harus berdiri sebagai token utuh, tapi boleh berada di
+ *   dalam baris yang lebih panjang (mis. "Budi Santoso liked this").
+ *   Tidak boleh "andi" ⊂ "sandi" atau "bam" ⊂ "bambang".
  */
 function textMatches(needle: string, haystack: string): boolean {
   if (!needle || !haystack) return false;
@@ -40,7 +61,11 @@ function textMatches(needle: string, haystack: string): boolean {
   if (needle.length < 3) {
     return haystack.split(/[\s,;|/@]+/).filter(Boolean).includes(needle);
   }
-  return haystack.includes(needle);
+  const re = new RegExp(
+    `(^|[^${TOKEN_CHAR}])${escapeRegExp(needle)}(?=$|[^${TOKEN_CHAR}])`,
+    'u'
+  );
+  return re.test(haystack);
 }
 
 /**
@@ -64,13 +89,13 @@ export function matchEmployeesToEngagement(
   const matchedIds = new Set<string>();
 
   for (const emp of employees) {
-    const nameMatch = normalizeMatchText(emp.name || '');
-    const igMatch = emp.igUsername ? normalizeMatchText(stripAt(emp.igUsername)) : '';
-    const igMatch2 = emp.igUsername2 ? normalizeMatchText(stripAt(emp.igUsername2)) : '';
-    const fbMatch = emp.fbName ? normalizeMatchText(emp.fbName) : '';
-    const fbMatch2 = emp.fbName2 ? normalizeMatchText(emp.fbName2) : '';
-    const tiktokMatch = emp.tiktokName ? normalizeMatchText(stripAt(emp.tiktokName)) : '';
-    const tiktokMatch2 = emp.tiktokName2 ? normalizeMatchText(stripAt(emp.tiktokName2)) : '';
+    const nameMatch = normalizeField(emp.name);
+    const igMatch = normalizeField(emp.igUsername);
+    const igMatch2 = normalizeField(emp.igUsername2);
+    const fbMatch = normalizeField(emp.fbName);
+    const fbMatch2 = normalizeField(emp.fbName2);
+    const tiktokMatch = normalizeField(emp.tiktokName);
+    const tiktokMatch2 = normalizeField(emp.tiktokName2);
 
     let isMatch = false;
 
@@ -88,7 +113,7 @@ export function matchEmployeesToEngagement(
     }
 
     // Alias hasil pemetaan admin (antrian belum terpetakan) — lintas platform.
-    if (!isMatch && (emp.aliases || []).some((a) => textMatches(normalizeMatchText(a), lowerInput))) {
+    if (!isMatch && (emp.aliases || []).some((a) => textMatches(normalizeField(a), lowerInput))) {
       isMatch = true;
     }
 
@@ -100,7 +125,7 @@ export function matchEmployeesToEngagement(
         }
         // Alias juga dicocokkan per-baris (nama yang sudah dipetakan otomatis
         // match pada kiriman berikutnya).
-        if (!isMatch && (emp.aliases || []).some((a) => textMatches(normalizeMatchText(a), line))) {
+        if (!isMatch && (emp.aliases || []).some((a) => textMatches(normalizeField(a), line))) {
           isMatch = true;
           break;
         }
@@ -152,18 +177,19 @@ function platformFields(emp: MatchableEmployee, platform: EngagementPlatform): s
   const push = (s: string) => {
     if (s) out.push(s);
   };
-  push(normalizeMatchText(emp.name || ''));
+  push(normalizeField(emp.name));
   if (platform === 'ig') {
-    push(normalizeMatchText(stripAt(emp.igUsername || '')));
-    push(normalizeMatchText(stripAt(emp.igUsername2 || '')));
+    push(normalizeField(emp.igUsername));
+    push(normalizeField(emp.igUsername2));
   } else if (platform === 'fb') {
-    push(normalizeMatchText(emp.fbName || ''));
-    push(normalizeMatchText(emp.fbName2 || ''));
+    push(normalizeField(emp.fbName));
+    push(normalizeField(emp.fbName2));
   } else if (platform === 'tiktok') {
-    push(normalizeMatchText(stripAt(emp.tiktokName || '')));
-    push(normalizeMatchText(stripAt(emp.tiktokName2 || '')));
+    push(normalizeField(emp.tiktokName));
+    push(normalizeField(emp.tiktokName2));
   }
-  for (const a of emp.aliases || []) push(normalizeMatchText(a));
+  // Alias juga di-strip @ supaya "@budi" dan "budi" diperlakukan sama.
+  for (const a of emp.aliases || []) push(normalizeField(a));
   return out;
 }
 

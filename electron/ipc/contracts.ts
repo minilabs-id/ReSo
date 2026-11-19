@@ -25,6 +25,9 @@ export const IPC = {
   dbUpsertDaily: 'reso:db:upsert-daily',
   dbStats: 'reso:db:stats',
   dbChanged: 'reso:db:changed',
+  dbBatchSave: 'reso:db:batch-save',
+  metaStatus: 'reso:meta:status',
+  metaRequest: 'reso:meta:request',
   dbExportAll: 'reso:db:export-all',
   dbImportAll: 'reso:db:import-all',
   dbListSettings: 'reso:db:list-settings',
@@ -159,4 +162,37 @@ export function parseSettingValue(v: unknown): { ok: boolean; value?: unknown } 
   } catch {
     return { ok: false }
   }
+}
+
+/** Satu operasi atomic batch (dipakai WriteBatch.commit di renderer). */
+export interface BatchSaveOp {
+  collection: 'employees' | 'dailyEngagement' | 'settings'
+  id: string
+  data?: unknown
+  delete?: boolean
+}
+
+export function parseBatchSave(v: unknown): BatchSaveOp[] | null {
+  if (!Array.isArray(v) || v.length > 20000) return null
+  const out: BatchSaveOp[] = []
+  for (const item of v) {
+    if (!isRecord(item)) return null
+    const collection = item.collection
+    if (collection !== 'employees' && collection !== 'dailyEngagement' && collection !== 'settings') return null
+    const id = typeof item.id === 'string' ? item.id.trim() : ''
+    if (!id || id.length > 256) return null
+    const isDelete = item.delete === true
+    if (!isDelete && !isRecord(item.data)) return null
+    out.push({ collection, id, data: item.data, delete: isDelete })
+  }
+  return out
+}
+
+/** Path relatif Graph API — tidak boleh mengandung kredensial di query. */
+export function parseMetaPath(v: unknown): string | null {
+  const s = typeof v === 'string' ? v.trim() : ''
+  if (!s.startsWith('/') || s.length > 512) return null
+  if (/access_token|input_token|appsecret/i.test(s)) return null
+  if (s.includes('..') || s.includes('\\')) return null
+  return s
 }

@@ -1,5 +1,5 @@
-/** Firestore timestamp-ish values (Timestamp | Date | serverTimestamp sentinel). */
-export type FirestoreTime = unknown;
+/** Nilai waktu lokal (ISO string | null | undefined dari SQLite). */
+export type LocalTime = unknown;
 
 /** Nama di rekap yang belum cocok dengan pegawai mana pun (antrian review). */
 export interface UnmatchedName {
@@ -20,8 +20,8 @@ export interface Employee {
   tiktokName2?: string;
   /** Nama panggilan/varian hasil pemetaan admin (antrian belum terpetakan). */
   aliases?: string[];
-  createdAt?: FirestoreTime;
-  updatedAt?: FirestoreTime;
+  createdAt?: LocalTime;
+  updatedAt?: LocalTime;
 }
 
 export interface DailyEngagement {
@@ -36,13 +36,13 @@ export interface DailyEngagement {
   igLinks?: string[];
   fbLinks?: string[];
   tiktokLinks?: string[];
-  updatedAt?: FirestoreTime;
+  updatedAt?: LocalTime;
   // Penanda dokumen diisi otomatis oleh ekstensi ReSoEx (via /api/engagement).
-  autoFilledAt?: FirestoreTime;
+  autoFilledAt?: LocalTime;
   autoFilledCount?: number;
   // Operator sudah memeriksa rekap otomatis (via Simpan Rekap / Terima semua).
   // Auto-filled tanpa verifiedAt = masih perlu review; data tetap lengkap di DB.
-  verifiedAt?: FirestoreTime;
+  verifiedAt?: LocalTime;
   // Nama yang tidak cocok dengan pegawai mana pun (antrian "belum terpetakan").
   unmatchedNames?: UnmatchedName[];
   // Waktu posting post yang direkap otomatis dari ReSoEx (ISO lokal

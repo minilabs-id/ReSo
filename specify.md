@@ -234,13 +234,13 @@ Ini boleh diperbaiki, tapi jangan disalahartikan sebagai scope baru:
 
 | Item | Catatan |
 |------|---------|
-| Validasi input vs model app | Skema DB lokal harus lengkap utk field TikTok & akun ke-2 sesuai `types.ts` app |
-| Matching terpusat | `src/lib/matching.ts` dipakai save + recalculate client (dan API local-dev) — jaga satu sumber kebenaran |
-| Meta token di client | Token disimpan & dipakai dari browser; risiko keamanan |
-| Allowlist email di client + rules | Duplikasi; hardcode email di source |
-| README masih template AI Studio | Belum menggambarkan produk ReSo |
-| `GEMINI_API_KEY` di vite config | Sisa scaffold; bukan fitur inti ReSo saat ini |
-| Admin UI dinamis | Collection `admins` ada di rules; UI kelola admin belum menonjol di modul utama |
+| Validasi input vs model app | Skema SQLite lokal (`electron/db/schema.ts`) sudah mencakup field TikTok & akun ke-2 sesuai `src/types.ts` — jaga tetap sinkron |
+| Matching terpusat | `src/lib/matching.ts` dipakai jalur simpan harian & recalculate client — jaga satu sumber kebenaran |
+| Token Meta | Disimpan lokal lewat layar Pengaturan (tabel `settings` SQLite), bukan env/Firestore; tetap jaga agar tidak bocor ke pihak ketiga |
+| Allowlist email | Hanya ada di modul/arsip web lama (`api/`, `src/lib/engagement-api.*`, `firestore.rules`) — tidak dipakai aplikasi desktop offline |
+| README | Sudah diperbarui: menjelaskan aplikasi desktop offline, bukan template AI Studio lagi |
+| `GEMINI_API_KEY` | Sudah tidak ada di config/Vite — sisa scaffold web telah dibersihkan |
+| Admin UI dinamis | Tidak relevan: tabel `admins`/`users` tidak ada di skema SQLite (tanpa login, #10); rules/Firestore hanya arsip web |
 
 ---
 

@@ -170,12 +170,32 @@ Verifikasi setelah tiap batch: `npm test`, `npm run typecheck:desktop`, `npm run
 
 ---
 
-## 8. Perubahan yang dilakukan pada audit ini
+## 8. Status perbaikan lengkap (2026-11-19)
 
-1. `importAll` kini menghapus rekap lama di dalam transaksi yang sama (`clearAllDaily`).
-2. `fetchLogoDataUrl` memakai data URL SVG dari `useAppLogo` (logo masuk PDF di `file://`).
-3. Label “ReSoEx” di UI/ toast diganti “Rekap otomatis”.
-4. Favicon `index.html` memakai path relatif `./favicon.ico`.
-5. `UIUX_AUDIT_DESKTOP.md` perlu disesuaikan pada bagian klaim P1-1/P1-5 (lihat P1-6).
+### Sudah diperbaiki & diverifikasi
+| Temuan | Perbaikan |
+|--------|-----------|
+| P0-1 | Scraper di-wire: `setScrapeMainWindow`, runner per-platform, START→engine→PROGRESS/DONE/FAIL dengan `runId`, STOP membatalkan run, FB/IG gagal jujur (tidak menggantung). `detach()` tidak lagi melepas semua listener session; template divalidasi ketat. |
+| P0-2 | Matching boundary-aware (Unicode), alias ikut `stripAt`, test regresi nama mirip/`@`/dual-account. |
+| P1-1 | Token Meta dienkripsi `safeStorage`; status token saja yang dikirim ke renderer; fetch Graph API lewat IPC proxy dengan header `Authorization: Bearer` (token tidak pernah di URL). |
+| P1-2 | `exportAll()` memuat `settings` + `schemaVersion`; import menulis ulang settings; UI memberi peringatan cadangan memuat token. |
+| P1-3 | Import menolak entri invalid & daftar kosong tanpa flag eksplisit, lengkap dengan alasan di UI. |
+| P1-4 | CI ekstensi dihapus → `desktop-ci.yml`; `constitution.md` berbanner arsip; `specify.md` §6.3 disegarkan. |
+| P1-5 | Tiga toggle tanpa implementasi dihapus dari UI, diganti catatan offline. |
+| P1-6 | Logo PDF & copy ReSoEx benar-benar diperbaiki; klaim audit disesuaikan. |
+| P2-1/2/3/8/9 | Navigasi URL eksak; window-open deny untuk semua contents; `event.sender` divalidasi; konfig korup di-backup `.bak`; `build` ikut typecheck desktop. |
+| P2-10/11 | `WriteBatch.commit()` satu transaksi atomik via `dbBatchSave`; generasi snapshot **per listener** (regresi tabel pegawai kosong sudah diperbaiki). |
+| P2-12 | `unmatchedNames` dihitung ulang dari snapshot terbaru di dalam transaksi. |
+| P2-13 | Batas numerik UI = sanitasi main. |
+| P2-14…P2-20 | Count duplikat, `isStaleRun`, helper WIB, recalculate 1/7 hari, rate tanggal depan, KPI Beranda diberi label jujur. |
+| P2-22…P2-29 | `test:date` + `test:stress` masuk `npm test`; `clean` hapus `dist/out/release`; deps build ke devDependencies; tsconfig include/exclude; dokumen legacy berbanner arsip. |
 
-Audit ini bersifat laporan; **tidak** melakukan refactor besar (scraper wiring, matching, token) tanpa persetujuan karena menyentuh perilaku inti dan memerlukan regresi menyeluruh.
+### Tidak dapat diselesaikan penuh di mesin ini
+- **Code signing & rcedit (P2-7):** butuh sertifikat; `signAndEditExecutable: false` tetap dipakai agar packaging lolos tanpa privilegi symlink.
+- **Upgrade Electron major (P2-27):** mengubah ABI prebuild `better-sqlite3` dan butuh validasi ulang.
+- **Enkripsi cookie scraper (P2-6):** butuh desain ulang partition/safeStorage.
+- **Advisori `xlsx@0.18.5`:** tidak ada fix di registry npm; perlu migrasi pustaka.
+- **Arsip fisik `api/`, `vercel.json`, aset ekstensi (P2-21):** dipertahankan sebagai arsip web (sudah berbanner) agar test parity tidak rusak.
+
+### Verifikasi akhir
+`npm test` ✅ · `npm run lint` ✅ · `npm run typecheck:desktop` ✅ · `npm run build` ✅ · `npm run dist:win` ✅ · **E2E 21/21** ✅ (status token, batch atomik, import invalid, scraper FAIL, nol error konsol).

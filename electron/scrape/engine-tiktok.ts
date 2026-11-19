@@ -8,10 +8,11 @@
  *   ses.webRequest, klik ikon komentar + scroll panel komentar (hanya container
  *   komentar — halaman TIDAK digeser).
  */
-import type { WebContentsView } from 'electron'
+import type { Session, WebContentsView } from 'electron'
 import { parseTikTokComments } from '../../src/shared/parsers'
 import { mergeNames } from '../../src/shared/normalize'
 import { isStaleRun } from '../../src/shared/state'
+import { sanitizeEngineOptions } from '../../src/shared/template'
 import {
   isTikTokCommentApi,
   isTikTokLoginWall,
@@ -21,7 +22,6 @@ import {
   type CaptureResult,
 } from './engine-tiktok-logic'
 
-/** Jeda kecil antar polling DOM (ms). */
 interface Intercepted {
   urls: string[]
 }
@@ -40,9 +40,46 @@ function sleep(ms: number, signal: { aborted: boolean }): Promise<void> {
   })
 }
 
+// ===================== Intersep webRequest (satu listener per session) =====================
+//
+// Electron 33 TIDAK punya API "hapus satu listener" untuk `webRequest`. Memanggil
+// `onCompleted(null)` melepaskan SEMUA listener di session (bug P2-4). Solusinya:
+// daftarkan SATU listener bersama per Session, lalu tiap run cuma mendaftar &
+// menghapus sink-nya sendiri. Run lama tidak pernah bisa mengganggu run baru.
+
+type UrlSink = (url: string) => void
+
+const sessionSinks = new Map<Session, Set<UrlSink>>()
+
+function ensureInterceptor(ses: Session): Set<UrlSink> {
+  const existing = sessionSinks.get(ses)
+  if (existing) return existing
+
+  const sinks = new Set<UrlSink>()
+  sessionSinks.set(ses, sinks)
+  const listener = (details: Electron.OnCompletedListenerDetails): void => {
+    if (!isTikTokCommentApi(details.url)) return
+    for (const sink of [...sinks]) {
+      try {
+        sink(details.url)
+      } catch {
+        /* sink mati → abaikan */
+      }
+    }
+  }
+  // Satu listener untuk semua run di session ini; tidak pernah dipanggil dengan
+  // `null`, jadi listener platform lain (bila ada) tetap utuh.
+  ses.webRequest.onCompleted({ urls: ['*://*.tiktok.com/*'] }, listener)
+  return sinks
+}
+
 /**
  * Pasang intersep respons JSON di session TikTok.
  * Mengembalikan fungsi pelepasan + wadah hasil.
+ *
+ * Body respons TIDAK bisa dibaca lewat webRequest di Electron modern tanpa
+ * debugger; jalur navigation memanen nama dari DOM panel komentar (sumber
+ * yang sama yang dipakai ekstensi lama saat GraphQL tidak terbaca).
  */
 async function attachInterceptor(
   view: WebContentsView,
@@ -50,27 +87,32 @@ async function attachInterceptor(
   signal: { aborted: boolean }
 ): Promise<{ result: Intercepted; detach: () => void }> {
   const store: Intercepted = { urls: [] }
-  const ses = view.webContents.session
+  const sinks = ensureInterceptor(view.webContents.session)
 
-  const listener = (details: Electron.OnCompletedListenerDetails): void => {
-    if (signal.aborted || !isTikTokCommentApi(details.url)) return
-    store.urls.push(details.url)
+  const sink: UrlSink = (url) => {
+    if (signal.aborted) return
+    store.urls.push(url)
   }
+  sinks.add(sink)
 
-  ses.webRequest.onCompleted({ urls: ['*://*.tiktok.com/*'] }, listener)
-
-  // Body respons TIDAK bisa dibaca lewat webRequest di Electron modern tanpa
-  // debugger; jalur navigation memanen nama dari DOM panel komentar (sumber
-  // yang sama yang dipakai ekstensi lama saat GraphQL tidak terbaca).
   const detach = (): void => {
-    try {
-      ses.webRequest.onCompleted(null)
-    } catch {
-      /* sudah dilepas */
-    }
+    sinks.delete(sink) // lepas HANYA sink milik run ini
   }
 
   return { result: store, detach }
+}
+
+/**
+ * Validasi URL template sebelum dinavigasi. `isTikTokTemplateValid` dari
+ * template.ts memerlukan `capturedAt` (TTL) yang TIDAK disimpan di preferensi
+ * operator — memakainya tanpa meta akan selalu menolak template yang valid.
+ * `sanitizeEngineOptions('SET_TEMPLATE', …)` memakai aturan host + endpoint yang
+ * sama (tiktok.com, /api/comment/list, bukan /list/reply), jadi ekuivalen aman.
+ */
+export function sanitizeTikTokTemplateForRun(url: unknown): string | null {
+  if (typeof url !== 'string' || !url.trim()) return null
+  const clean = sanitizeEngineOptions('SET_TEMPLATE', { templateUrl: url }, 'tiktok').templateUrl
+  return clean ?? null
 }
 
 /**
@@ -152,10 +194,15 @@ export async function runTikTokCapture(
   })
 
   if (mode === 'template' && req.templateUrl) {
+    // Jangan pernah navigasi ke URL yang gagal divalidasi (host/endpoint asing).
+    const safeUrl = sanitizeTikTokTemplateForRun(req.templateUrl)
+    if (!safeUrl) return finish('no_template', 'template URL tidak valid')
+    if (req.signal.aborted) return finish('stopped')
     try {
       // WebContents.loadURL tidak mengembalikan status HTTP; kegagalan load
       // melempar error dan ditangkap di blok catch di bawah.
-      await wc.loadURL(req.templateUrl)
+      await wc.loadURL(safeUrl)
+      if (req.signal.aborted) return finish('stopped')
       const body = await wc.executeJavaScript('document.body ? document.body.innerText : ""', true)
       if (typeof body !== 'string' || !body.trim()) return finish('no_template', 'body kosong')
       let json: unknown = null

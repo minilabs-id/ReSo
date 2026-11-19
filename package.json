@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "vite",
     "dev:desktop": "electron-vite dev",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run lint && npm run typecheck:desktop && vite build",
     "build:desktop": "electron-vite build",
     "start:desktop": "electron-vite preview",
     "rebuild:native": "node scripts/rebuild-native.cjs",
@@ -23,14 +23,13 @@
     "test:net": "tsx src/lib/fetch-with-timeout.test.ts",
     "test:shared": "tsx src/shared/index.test.ts && tsx src/shared/run-state.test.ts && tsx electron/store/settings-schema.test.ts && tsx electron/store/state-schema.test.ts && tsx electron/scrape/engine-tiktok-logic.test.ts && tsx electron/db/schema.test.ts",
     "test:local-db": "tsx src/lib/local-db.test.ts",
-    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "test": "npm run test:shared && npm run test:local-db && npm run test:matching && npm run test:api && npm run test:net"
+    "test:date": "tsx src/lib/date.test.ts",
+    "clean": "node -e \"const fs=require('fs');for(const d of ['dist','out','release'])fs.rmSync(d,{recursive:true,force:true})\"",
+    "test": "npm run test:shared && npm run test:local-db && npm run test:matching && npm run test:date && npm run test:stress && npm run test:api && npm run test:net"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",
     "@fontsource-variable/geist": "^5.2.8",
-    "@tailwindcss/vite": "^4.1.14",
-    "@vitejs/plugin-react": "^5.0.4",
     "better-sqlite3": "11.10.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -44,26 +43,26 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "recharts": "^3.8.1",
-    "shadcn": "^4.2.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tw-animate-css": "^1.4.0",
-    "vite": "^6.2.0",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@tailwindcss/vite": "^4.1.14",
     "@types/better-sqlite3": "^9.6.0",
-    "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "autoprefixer": "^10.4.21",
+    "@vitejs/plugin-react": "^5.0.4",
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^3.1.0",
     "sharp": "^0.35.3",
+    "shadcn": "^4.2.0",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
   }
 }

@@ -24,3 +24,7 @@ key.txt
 
 # State lokal agent/tooling
 .minicode/
+
+# Hasil uji ABI & aset favicon yang di-generate
+abi-result.txt
+public/favicon-*.png
