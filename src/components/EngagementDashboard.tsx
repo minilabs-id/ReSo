@@ -1898,7 +1898,13 @@ export default function EngagementDashboard() {
 
             {activeTab === 'scraper' && (
               <React.Suspense fallback={null}>
-                <ScraperTab />
+                <ScraperTab
+                  onOpenRekap={() => {
+                    setSelectedDate(getLocalISODate(new Date()));
+                    setActiveTab('overview');
+                    setIsInputModalOpen(true);
+                  }}
+                />
               </React.Suspense>
             )}
 

@@ -6,6 +6,8 @@ import { Input } from '../ui/input';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import {
   isElectron,
+  getDaily,
+  upsertDaily,
   getScrapeStates,
   onScrapeStateChanged,
   applyScrapeEvent,
@@ -20,6 +22,8 @@ import { filterNames, sortNamesAz, namesToClipboardText } from '../../shared/nor
 import { newRunId } from '../../shared/state';
 import { wordFor, fbTargetLabel, igTargetLabel } from '../../shared/messages';
 import type { Platform } from '../../shared/types';
+import { getLocalISODate } from '../../lib/date';
+import { toast } from 'sonner';
 
 const PLATFORM_LABEL: Record<Platform, string> = {
   facebook: 'Facebook',
@@ -81,7 +85,12 @@ const EMPTY_STATE: NameState = {
  * State pemilik adalah MAIN PROCESS; komponen ini hanya mengirim event &
  * merender state yang disiarkan (`scrape.stateChanged`).
  */
-export default function ScraperPanel() {
+export default function ScraperPanel({
+  onOpenRekap,
+}: {
+  /** Dipanggil setelah hasil dimasukkan ke rekap agar modal input langsung terbuka. */
+  onOpenRekap?: () => void;
+} = {}) {
   const [platform, setPlatform] = useState<Platform>('tiktok');
   const [states, setStates] = useState<Record<Platform, NameState>>({
     facebook: EMPTY_STATE,
@@ -261,6 +270,35 @@ export default function ScraperPanel() {
     }
   }, [state.names, platform, flashCopied]);
 
+  /** Masukkan nama hasil scrap ke raw text rekap hari ini — tanpa paste manual. */
+  const sendToRekap = useCallback(async () => {
+    if (!isElectron || state.names.length === 0) return;
+    const date = getLocalISODate(new Date());
+    const field: 'igRawText' | 'fbRawText' | 'tiktokRawText' =
+      platform === 'instagram' ? 'igRawText' : platform === 'facebook' ? 'fbRawText' : 'tiktokRawText';
+    try {
+      const existing = await getDaily(date);
+      const prev = String(existing?.[field] ?? '')
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const seen = new Set(prev.map((s) => s.toLowerCase()));
+      const merged = [...prev];
+      for (const name of state.names) {
+        const clean = name.trim();
+        if (!clean || seen.has(clean.toLowerCase())) continue;
+        seen.add(clean.toLowerCase());
+        merged.push(clean);
+      }
+      const saved = await upsertDaily(date, { [field]: merged.join('\n') });
+      if (!saved) throw new Error('Gagal menulis rekap');
+      toast.success(`${merged.length - prev.length} ${wordFor(platform)} masuk rekap ${date}`);
+      onOpenRekap?.();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Gagal memasukkan hasil ke rekap');
+    }
+  }, [state.names, platform, onOpenRekap]);
+
   const running = state.status === 'running';
 
   return (
@@ -382,6 +420,15 @@ export default function ScraperPanel() {
             title="Salin seluruh nama tanpa filter"
           >
             {copiedKind === 'all' ? 'Tersalin' : 'Salin semua'}
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => void sendToRekap()}
+            disabled={!isElectron || state.count === 0}
+            title="Tulis hasil scrap ke rekap hari ini tanpa paste manual"
+            className="bg-slate-900 text-white font-bold"
+          >
+            Masukkan ke rekap hari ini
           </Button>
         </div>
 
