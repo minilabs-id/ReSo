@@ -20,6 +20,12 @@ interface WeeklyReportViewProps {
   handleExportImage: (type: 'daily' | 'weekly' | 'monthly', filename: string) => void;
   handleExportExcel: (type: 'daily' | 'weekly' | 'monthly', filename: string) => void;
   canExportImage: boolean;
+  /** Set to false to disable the "next period" button in the report controls. */
+  canGoNext?: boolean;
+  /** Employee count shown in the image-export limit note. */
+  employeeCount?: number;
+  /** Display string for the viewed week, e.g. "6 Jul - 12 Jul 2026". Falls back to wr.weekRange. */
+  weekRange?: string;
   printRef: React.RefObject<HTMLDivElement | null>;
   isLoading: boolean;
   sortedEmployees: Employee[];
@@ -27,13 +33,21 @@ interface WeeklyReportViewProps {
 }
 
 export function WeeklyReportView(props: WeeklyReportViewProps) {
-  const { weeklyReports, weeklyStats, weeklyDatesList, changeWeek, weeklySortMode, setWeeklySortMode, handleExportPDF, handleExportImage, handleExportExcel, canExportImage, printRef, isLoading, sortedEmployees, dailyEngagementsMap } = props;
+  const { weeklyReports, weeklyStats, weeklyDatesList, changeWeek, weeklySortMode, setWeeklySortMode, handleExportPDF, handleExportImage, handleExportExcel, canExportImage, canGoNext = true, employeeCount, weekRange, printRef, isLoading, sortedEmployees, dailyEngagementsMap } = props;
   const wr = weeklyReports[0];
+  const displayWeekRange = weekRange ?? wr?.weekRange;
+
+  // Filename must reflect the *viewed* week, not today's date.
+  const firstWeekDate = weeklyDatesList[0];
+  const lastWeekDate = weeklyDatesList[weeklyDatesList.length - 1];
+  const weeklyFilename = firstWeekDate && lastWeekDate
+    ? `recaplink-mingguan-${firstWeekDate}_${lastWeekDate}`
+    : `recaplink-mingguan-${wr?.year ?? 'periode'}-W${String(wr?.weekNumber ?? 0).padStart(2, '0')}`;
   return (
     <motion.div key="reports" variants={containerVariants} initial="hidden" animate="visible" exit="hidden" className="space-y-6 md:space-y-8">
       <ReportControls
-        title={`Minggu ke-${wr?.weekNumber}`}
-        subtitle={`${wr?.monthName} ${wr?.year}`}
+        title={`Minggu ISO ke-${wr?.weekNumber}`}
+        subtitle={displayWeekRange ?? `${wr?.monthName} ${wr?.year}`}
         currentBadge={wr?.isCurrentWeek ? 'Minggu ini' : null}
         onPrev={() => changeWeek(-1)}
         onNext={() => changeWeek(1)}
@@ -43,10 +57,12 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
         ]}
         activeSort={weeklySortMode}
         onSortChange={(v) => setWeeklySortMode(v as 'bidang' | 'name')}
-        onExportPdf={() => handleExportPDF('weekly', `recaplink-mingguan-${getLocalISODate()}`)}
-        onExportExcel={() => handleExportExcel('weekly', `recaplink-mingguan-${getLocalISODate()}`)}
-        onExportImage={() => handleExportImage('weekly', `recaplink-mingguan-${getLocalISODate()}`)}
+        onExportPdf={() => handleExportPDF('weekly', weeklyFilename)}
+        onExportExcel={() => handleExportExcel('weekly', weeklyFilename)}
+        onExportImage={() => handleExportImage('weekly', weeklyFilename)}
         canExportImage={canExportImage}
+        canGoNext={canGoNext}
+        employeeCount={employeeCount ?? sortedEmployees.length}
         isLoading={isLoading}
       />
 
@@ -54,20 +70,20 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 gap-2 mb-8 pb-6">
           <div className="space-y-0.5">
             <h3 className="font-black text-slate-900 tracking-tight uppercase text-2xl">Laporan Mingguan</h3>
-            <p className="font-bold text-slate-500 uppercase tracking-widest text-sm">Rekapitulasi Engagement • Minggu ke-{wr?.weekNumber} • {wr?.year}</p>
+            <p className="font-bold text-slate-500 uppercase tracking-widest text-sm">Rekapitulasi Engagement • Minggu ISO ke-{wr?.weekNumber} • {displayWeekRange ?? `${wr?.monthName} ${wr?.year}`}</p>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
             <div className="flex flex-wrap items-center justify-end gap-1 md:gap-1.5">
               {weeklyStats.bidangRates?.map((br: any, idx: number) => (
                 <div key={idx} className="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded px-1.5 py-0.5 md:px-2 md:py-1">
-                  <span className="font-bold uppercase tracking-wider text-slate-500 leading-none text-[7px] md:text-[8px]">{br.bidang}</span>
-                  <span className="font-bold text-emerald-600 leading-none text-[8px] md:text-[10px]">{br.rate}%</span>
+                  <span className="font-bold uppercase tracking-wider text-slate-500 leading-none text-[11px]">{br.bidang}</span>
+                  <span className="font-bold text-emerald-600 leading-none text-[11px]">{br.rate}%</span>
                 </div>
               ))}
             </div>
             <div className="bg-slate-50 rounded-lg border border-slate-200 flex flex-col justify-center shrink-0 text-left md:text-right p-3">
-              <p className={cn("font-bold text-slate-900 uppercase tracking-widest leading-none", "text-[10px]")}>ReSo</p>
-              <p className={cn("text-slate-500 leading-none", "text-[8px] mt-1")}>Gen: {new Date().toLocaleDateString('id-ID')}</p>
+              <p className={cn("font-bold text-slate-900 uppercase tracking-widest leading-none", "text-[11px]")}>ReSo</p>
+              <p className={cn("text-slate-500 leading-none", "text-[11px] mt-1")}>Gen: {new Date().toLocaleDateString('id-ID')}</p>
             </div>
           </div>
         </div>
@@ -82,33 +98,46 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
                 <div key={emp.id} className={cn('flex items-center justify-between gap-3 p-3 rounded-xl border', isTop ? 'bg-emerald-50/80 border-emerald-100' : isBottom ? 'bg-rose-50/50 border-rose-100' : 'bg-slate-50/50 border-slate-200')}>
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900 truncate">{emp.name}</p>
-                    <span className={cn('text-[10px] font-medium px-1.5 py-0.5 rounded', getBidangColor(emp.bidang))}>{emp.bidang || '—'}</span>
+                    <span className={cn('text-[11px] font-medium px-1.5 py-0.5 rounded', getBidangColor(emp.bidang))}>{emp.bidang || '—'}</span>
                   </div>
                   <div className="text-right shrink-0">
                     <p className={cn('text-sm font-bold', isTop ? 'text-emerald-700' : isBottom ? 'text-rose-600' : 'text-slate-700')}>{pct}%</p>
-                    <p className="text-[10px] text-slate-400">{total}/{max}</p>
+                    <p className="text-[11px] text-slate-400">{total}/{max}</p>
                   </div>
                 </div>
               );
             })}
           </div>
 
+        {/* Keterangan warna baris peringkat */}
+        <div className="hidden md:flex items-center gap-4 text-[11px] text-slate-500 mb-2">
+          <span className="font-semibold uppercase tracking-wider text-slate-400">Keterangan:</span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-emerald-100 border border-emerald-200" />
+            3 teratas
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-sm bg-red-100 border border-red-200" />
+            3 terbawah
+          </span>
+        </div>
+
         <div className="flex-1 rounded-xl border border-slate-200 overflow-auto max-h-[60vh] md:max-h-[600px] hidden md:block">
           <div className="min-w-max">
             <Table id="engagement-table" className="border-collapse w-full">
               <TableHeader>
                 <TableRow className="bg-slate-50/50 border-b border-slate-200">
-                  <TableHead className="sticky left-0 z-20 bg-slate-50 border-r border-slate-200 px-3 py-2 font-bold text-slate-900 whitespace-nowrap text-[10px] uppercase tracking-wider">Nama Pegawai</TableHead>
+                  <TableHead className="sticky left-0 z-20 bg-slate-50 border-r border-slate-200 px-3 py-2 font-bold text-slate-900 whitespace-nowrap text-[11px] uppercase tracking-wider">Nama Pegawai</TableHead>
                   {weeklyDatesList.map((date, dIdx) => (
-                    <TableHead key={dIdx} className={cn("border-r border-slate-200 text-center px-2 py-2 text-[10px] font-bold w-[1%] whitespace-nowrap", date === getLocalISODate(new Date()) ? "text-slate-900 bg-slate-100/50" : "text-slate-400")}>
+                    <TableHead key={dIdx} className={cn("border-r border-slate-200 text-center px-2 py-2 text-[11px] font-bold w-[1%] whitespace-nowrap", date === getLocalISODate(new Date()) ? "text-slate-900 bg-slate-100/50" : "text-slate-400")}>
                       <div className="flex flex-col items-center">
-                        <span className="opacity-50 text-[8px]">{parseLocalISODate(date).toLocaleDateString('id-ID', { weekday: 'short' })}</span>
+                        <span className="opacity-50 text-[11px]">{parseLocalISODate(date).toLocaleDateString('id-ID', { weekday: 'short' })}</span>
                         <span className="text-sm leading-tight">{parseLocalISODate(date).getDate()}</span>
-                        <span className="opacity-50 text-[8px]">{parseLocalISODate(date).toLocaleDateString('id-ID', { month: 'short' })}</span>
+                        <span className="opacity-50 text-[11px]">{parseLocalISODate(date).toLocaleDateString('id-ID', { month: 'short' })}</span>
                       </div>
                     </TableHead>
                   ))}
-                  <TableHead className="border-l border-slate-200 text-center px-3 py-2 text-[10px] font-bold text-slate-900 bg-slate-50 uppercase tracking-wider w-[1%] whitespace-nowrap">% ENG</TableHead>
+                  <TableHead className="border-l border-slate-200 text-center px-3 py-2 text-[11px] font-bold text-slate-900 bg-slate-50 uppercase tracking-wider w-[1%] whitespace-nowrap">% ENG</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -120,7 +149,7 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
                     <TableRow key={emp.id} className={rowClass}>
                       <TableCell className={cn("sticky left-0 z-10 border-r px-2 py-1 w-[1%] whitespace-nowrap", isTop ? "bg-emerald-50/80 border-emerald-200" : isBottom ? "bg-red-50/80 border-red-200" : "bg-white border-slate-200")}>
                         <div className="flex items-center gap-2">
-                          <span className={cn("text-[9px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0", isTop ? "bg-emerald-100 text-emerald-700" : isBottom ? "bg-red-100 text-red-700" : getBidangColor(emp.bidang))}>{emp.bidang ? emp.bidang.substring(0, 3) : '---'}</span>
+                          <span className={cn("text-[11px] font-mono font-bold px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0", isTop ? "bg-emerald-100 text-emerald-700" : isBottom ? "bg-red-100 text-red-700" : getBidangColor(emp.bidang))}>{emp.bidang ? emp.bidang.substring(0, 3) : '---'}</span>
                           <p className={cn("font-bold text-xs whitespace-nowrap shrink-0", isTop ? "text-emerald-900" : isBottom ? "text-red-900" : "text-slate-800")}>{emp.name}</p>
                           <div className="flex items-center gap-0.5 ml-1">
                             {!!emp.igUsername && <Instagram size={10} className={isTop ? "text-emerald-600/50" : isBottom ? "text-red-600/50" : "text-pink-500/50"} />}
@@ -137,7 +166,7 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
                         const isFuture = date > getLocalISODate(new Date());
                         return (
                           <TableCell key={dIdx} className="border-r border-slate-50 text-center px-1.5 py-0 w-[1%] whitespace-nowrap">
-                            <div className="flex items-center justify-center gap-1.5 py-1">
+                            <div className="flex items-center justify-center gap-1.5 py-1" role="img" aria-label={`${parseLocalISODate(date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })} — IG ${isFuture ? '-' : hasIg ? 'ya' : 'tidak'}, FB ${isFuture ? '-' : hasFb ? 'ya' : 'tidak'}, TikTok ${isFuture ? '-' : hasTiktok ? 'ya' : 'tidak'}`} title={`IG ${isFuture ? '-' : hasIg ? '✓' : '✗'} · FB ${isFuture ? '-' : hasFb ? '✓' : '✗'} · TT ${isFuture ? '-' : hasTiktok ? '✓' : '✗'}`}>
                               {!isFuture ? (hasIg ? <Heart size={14} className="text-pink-500" fill="currentColor" /> : <X size={14} className="text-red-500" strokeWidth={3} />) : <div className="w-3 h-3" />}
                               {!isFuture ? (hasFb ? <ThumbsUp size={14} className="text-blue-500" fill="currentColor" /> : <X size={14} className="text-red-500" strokeWidth={3} />) : <div className="w-3 h-3" />}
                               {!isFuture ? (hasTiktok ? <TiktokIcon size={14} className="text-slate-800" fill="currentColor" /> : <X size={14} className="text-red-500" strokeWidth={3} />) : <div className="w-3 h-3" />}

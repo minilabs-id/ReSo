@@ -105,6 +105,8 @@ interface ResoDataBridge {
   getSetting?: (key: string) => Promise<unknown>
   setSetting?: (key: string, value: unknown) => Promise<{ ok: boolean; reason?: string }>
   deleteSetting?: (key: string) => Promise<{ ok: boolean }>
+  /** Berlangganan siaran perubahan data dari main process. */
+  onChanged?: (cb: () => void) => () => void
 }
 
 declare global {

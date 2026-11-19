@@ -91,12 +91,14 @@ export const DashboardTab = ({
   dailyEngagements,
   onGoInput,
   onGoDaily,
+  dataLoading = false,
 }: {
   stats: DashboardStats;
   chartData: ChartPoint[];
   dailyEngagements: DailyEngagement[];
   onGoInput?: () => void;
   onGoDaily?: () => void;
+  dataLoading?: boolean;
 }) => {
   return (
     <motion.div
@@ -125,7 +127,9 @@ export const DashboardTab = ({
       <motion.div variants={itemVariants} className="hidden lg:flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">Beranda</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Ringkasan engagement pegawai</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            {dataLoading ? 'Memuat data lokal…' : 'Ringkasan engagement pegawai'}
+          </p>
         </div>
         {onGoInput && (
           <Button

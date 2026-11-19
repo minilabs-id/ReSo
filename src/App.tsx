@@ -10,6 +10,8 @@ import { useAuth } from './components/LocalProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAppLogo } from './hooks/useAppLogo';
 import { Toaster } from './components/ui/sonner';
+import { Button } from './components/ui/button';
+import { APP_VERSION } from './lib/version';
 
 function LoadingScreen() {
   const logoUrl = useAppLogo();
@@ -47,6 +49,15 @@ function DatabaseUnavailableScreen({ message }: { message: string }) {
         <img src={logoUrl} alt="ReSo" className="w-16 h-16 object-contain mb-6" />
         <h2 className="text-lg font-bold text-slate-900 mb-2">Database lokal tidak tersedia</h2>
         <p className="text-sm text-slate-600 leading-relaxed">{message}</p>
+        <p className="mt-3 text-[11px] font-semibold text-slate-400">ReSo v{APP_VERSION} · desktop</p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()}>
+            Coba lagi
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => window.close()}>
+            Tutup aplikasi
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -61,7 +72,7 @@ export default function App() {
       setShowLoading(true);
       return;
     }
-    // Jedah singkat agar transisi keluar layar loading tidak berkedip.
+    // Jeda singkat agar transisi keluar layar loading tidak berkedip.
     const timer = setTimeout(() => setShowLoading(false), 200);
     return () => clearTimeout(timer);
   }, [loading]);

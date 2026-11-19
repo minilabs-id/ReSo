@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { addDoc, deleteDoc, doc, updateDoc, serverTimestamp, writeBatch, runTransaction, query, where, getDocs, dinasCollection, dinasDoc } from '../lib/local-db';
 import { Employee } from '../types';
@@ -68,7 +68,7 @@ const EmployeeRow = React.memo(({ emp, index, onEdit, onDelete }: { emp: Employe
       <TableCell className="pl-6 py-3">
         <div className="flex items-center gap-3">
           <motion.div 
-            className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-mono font-bold text-[10px]"
+            className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-mono font-bold text-[11px]"
           >
             {index + 1}
           </motion.div>
@@ -76,26 +76,26 @@ const EmployeeRow = React.memo(({ emp, index, onEdit, onDelete }: { emp: Employe
         </div>
       </TableCell>
       <TableCell>
-        <span className={cn("text-[10px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider", getBidangColor(emp.bidang))}>
+        <span className={cn("text-[11px] font-mono font-bold px-2 py-0.5 rounded-full uppercase tracking-wider", getBidangColor(emp.bidang))}>
           {emp.bidang || 'N/A'}
         </span>
       </TableCell>
       <TableCell>
-        <code className="text-[10px] bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200 text-slate-500 font-mono">{emp.nip}</code>
+        <code className="text-[11px] bg-slate-50 px-2 py-0.5 rounded-full border border-slate-200 text-slate-500 font-mono">{emp.nip}</code>
       </TableCell>
       <TableCell>
         <div className="flex flex-col gap-1.5">
           <div className="flex gap-3">
-            <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 w-24">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 w-24">
               <Instagram size={12} className={emp.igUsername ? "text-pink-500 shrink-0" : "text-slate-300 shrink-0"} />
               <span className="truncate">{emp.igUsername || '-'}</span>
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500 w-24">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500 w-24">
               <Facebook size={12} className={emp.fbName ? "text-blue-500 shrink-0" : "text-slate-300 shrink-0"} />
               <span className="truncate">{emp.fbName || '-'}</span>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] font-medium text-slate-500">
+          <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
             <TiktokIcon size={12} className={emp.tiktokName ? "text-slate-800 shrink-0" : "text-slate-300 shrink-0"} />
             <span className="truncate">{emp.tiktokName || '-'}</span>
           </div>
@@ -328,6 +328,20 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
   }, [deleteConfirmId]);
 
   const deleteModalRef = useDialogA11y<HTMLDivElement>(!!deleteConfirmId);
+
+  // Nama/NIP pegawai yang akan dihapus (untuk pesan konfirmasi yang spesifik).
+  const employeeToDelete = employees.find((e) => e.id === deleteConfirmId);
+
+  // Fokus kolom pertama setelah form Tambah/Edit muncul. Tombol pemicu
+  // ter-unmount saat form terbuka, sehingga fokus sebelumnya jatuh ke body.
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    if (!isAdding) return;
+    const frame = requestAnimationFrame(() => {
+      nameInputRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isAdding]);
 
   const startEdit = (emp: Employee) => {
     setFormData({ 
@@ -678,6 +692,8 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                     size="icon" 
                     onClick={resetForm} 
                     className="rounded-full hover:bg-slate-100 text-slate-400 h-8 w-8"
+                    aria-label="Tutup form"
+                    title="Tutup form"
                   >
                     <X size={18} />
                   </Button>
@@ -693,6 +709,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                           <User size={14} />
                         </div>
                         <Input 
+                          ref={nameInputRef}
                           placeholder="Ahmad Subarjo" 
                           value={formData.name}
                           onChange={(e) => setFormData({...formData, name: e.target.value})}
@@ -848,13 +865,13 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
         <CardContent className="p-0">
           {/* Desktop Table - Hidden on small screens */}
           <div className="hidden md:block">
-            <div className="overflow-x-auto overflow-y-auto">
+            <div className="overflow-x-auto overflow-y-auto max-h-[70vh]">
               <div className="min-w-[800px]">
                 <Table>
                   <TableHeader className="bg-slate-50/50 sticky top-0 z-10">
                     <TableRow className="hover:bg-transparent border-slate-200">
                       <TableHead 
-                        className="pl-6 py-4 font-bold text-slate-400 uppercase tracking-widest text-[10px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
+                        className="pl-6 py-4 font-bold text-slate-400 uppercase tracking-widest text-[11px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
                         onClick={() => handleSort('name')}
                       >
                         <div className="flex items-center">
@@ -862,7 +879,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                         </div>
                       </TableHead>
                       <TableHead 
-                        className="font-bold text-slate-400 uppercase tracking-widest text-[10px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
+                        className="font-bold text-slate-400 uppercase tracking-widest text-[11px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
                         onClick={() => handleSort('bidang')}
                       >
                         <div className="flex items-center">
@@ -870,15 +887,15 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                         </div>
                       </TableHead>
                       <TableHead 
-                        className="font-bold text-slate-400 uppercase tracking-widest text-[10px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
+                        className="font-bold text-slate-400 uppercase tracking-widest text-[11px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
                         onClick={() => handleSort('nip')}
                       >
                         <div className="flex items-center">
                           Identitas (NIP) <SortIcon field="nip" />
                         </div>
                       </TableHead>
-                      <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[10px] bg-slate-50">Sosial Media</TableHead>
-                      <TableHead className="text-right pr-6 font-bold text-slate-400 uppercase tracking-widest text-[10px] bg-slate-50">Aksi</TableHead>
+                      <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[11px] bg-slate-50">Sosial Media</TableHead>
+                      <TableHead className="text-right pr-6 font-bold text-slate-400 uppercase tracking-widest text-[11px] bg-slate-50">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <motion.tbody 
@@ -901,7 +918,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                           <EmployeeRow 
                             key={emp.id} 
                             emp={emp} 
-                            index={(page - 1) * pageSize + index + 1} 
+                            index={(page - 1) * pageSize + index} 
                             onEdit={startEdit} 
                             onDelete={confirmDelete}
                           />
@@ -936,7 +953,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                         </div>
                         <div className="min-w-0 flex-1">
                           <h4 className="font-bold text-slate-900 text-sm whitespace-normal line-clamp-2 leading-tight">{emp.name}</h4>
-                          <code className="text-[10px] text-slate-400 font-mono mt-1 block truncate">{emp.nip}</code>
+                          <code className="text-[11px] text-slate-400 font-mono mt-1 block truncate">{emp.nip}</code>
                         </div>
                       </div>
                       <div className="flex gap-1 shrink-0">
@@ -957,6 +974,8 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                           size="icon" 
                           onClick={() => confirmDelete(emp.id)}
                           className="h-10 w-10 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600 active:scale-90 transition-transform"
+                          aria-label="Hapus"
+                          title="Hapus"
                         >
                           <Trash2 size={18} />
                         </Button>
@@ -965,20 +984,20 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                     
                     <div className="flex flex-col gap-2 pt-2 border-t border-slate-50 mt-2">
                       <div className="flex">
-                        <span className={cn("text-[9px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider", getBidangColor(emp.bidang))}>
+                        <span className={cn("text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider", getBidangColor(emp.bidang))}>
                           {emp.bidang || 'N/A'}
                         </span>
                       </div>
                       <div className="flex flex-col gap-1.5 pt-1">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
                           <Instagram size={13} className={emp.igUsername || emp.igUsername2 ? "text-pink-500 shrink-0" : "text-slate-300 shrink-0"} />
                           <span className="truncate">{emp.igUsername || '-'}{emp.igUsername2 ? ` · ${emp.igUsername2}` : ''}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
                           <Facebook size={13} className={emp.fbName || emp.fbName2 ? "text-blue-500 shrink-0" : "text-slate-300 shrink-0"} />
                           <span className="truncate">{emp.fbName || '-'}{emp.fbName2 ? ` · ${emp.fbName2}` : ''}</span>
                         </div>
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-500">
+                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
                           <TiktokIcon size={13} className={emp.tiktokName || emp.tiktokName2 ? "text-slate-800 shrink-0" : "text-slate-300 shrink-0"} />
                           <span className="truncate">{emp.tiktokName || '-'}{emp.tiktokName2 ? ` · ${emp.tiktokName2}` : ''}</span>
                         </div>
@@ -1058,6 +1077,12 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                     <Trash2 size={24} className="text-rose-600" />
                   </div>
                   <h3 id="delete-pegawai-title" className="text-lg font-bold text-slate-900 tracking-tight">Hapus pegawai?</h3>
+                  {employeeToDelete && (
+                    <p className="text-sm font-semibold text-slate-700 px-2 break-words">
+                      {employeeToDelete.name}{' '}
+                      <span className="font-mono font-normal text-slate-500">({employeeToDelete.nip})</span>
+                    </p>
+                  )}
                   <p className="text-xs font-medium text-slate-500 leading-relaxed px-2">
                     Tindakan ini tidak bisa dibatalkan. Data pegawai dihapus permanen dari sistem.
                   </p>

@@ -10,6 +10,7 @@ import { cn } from '@/lib/utils';
 import { useAuth } from './LocalProvider';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { ConfirmDialog } from './ui/confirm-dialog';
 import { parseLocalISODate, addLocalDays } from '../lib/date';
 import { matchEmployeesToEngagement, matchEngagementDetail, engagedIdsEqual, mergeUniqueLines } from '../lib/matching';
 import type { DailyEngagement, Employee, UnmatchedName } from '../types';
@@ -24,6 +25,8 @@ interface InputModalProps {
   postedAt: string[];
   unmatchedCount: number;
   onClose: () => void;
+  /** Parent memanggil guard ini untuk Esc/back-button agar dirty-check dipakai. */
+  closeGuardRef?: React.MutableRefObject<(() => void) | null>;
   onOpenUnmatched: () => void;
   onGoToSettings: () => void;
 }
@@ -55,6 +58,7 @@ export function InputModal({
   postedAt,
   unmatchedCount,
   onClose,
+  closeGuardRef,
   onOpenUnmatched,
   onGoToSettings,
 }: InputModalProps) {
@@ -72,6 +76,8 @@ export function InputModal({
   const [isMetaExpanded, setIsMetaExpanded] = useState(false);
   const [isFetchingMeta, setIsFetchingMeta] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [closeConfirm, setCloseConfirm] = useState(false);
+  const [closeThenSettings, setCloseThenSettings] = useState(false);
 
   const [initialIgRawInput, setInitialIgRawInput] = useState('');
   const [initialFbRawInput, setInitialFbRawInput] = useState('');
@@ -79,6 +85,15 @@ export function InputModal({
   const [initialIgLinks, setInitialIgLinks] = useState<string[]>([]);
   const [initialFbLinks, setInitialFbLinks] = useState<string[]>([]);
   const [initialTiktokLinks, setInitialTiktokLinks] = useState<string[]>([]);
+
+  /** Satu sumber kebenaran untuk "ada perubahan belum disimpan". */
+  const hasUnsavedChanges = (): boolean =>
+    igRawInput !== initialIgRawInput ||
+    fbRawInput !== initialFbRawInput ||
+    tiktokRawInput !== initialTiktokRawInput ||
+    JSON.stringify(igLinks) !== JSON.stringify(initialIgLinks) ||
+    JSON.stringify(fbLinks) !== JSON.stringify(initialFbLinks) ||
+    JSON.stringify(tiktokLinks) !== JSON.stringify(initialTiktokLinks);
 
   const prevDateRef = useRef(date);
   const notifiedDirtyRef = useRef<string | null>(null);
@@ -119,14 +134,7 @@ export function InputModal({
       return;
     }
 
-    const isDirty =
-      igRawInput !== initialIgRawInput ||
-      fbRawInput !== initialFbRawInput ||
-      tiktokRawInput !== initialTiktokRawInput ||
-      JSON.stringify(igLinks) !== JSON.stringify(initialIgLinks) ||
-      JSON.stringify(fbLinks) !== JSON.stringify(initialFbLinks) ||
-      JSON.stringify(tiktokLinks) !== JSON.stringify(initialTiktokLinks);
-
+    const isDirty = hasUnsavedChanges();
     const isDateChange = date !== prevDateRef.current;
 
     if (isDirty) {
@@ -174,6 +182,29 @@ export function InputModal({
       setInitialTiktokLinks([]);
     }
   }, [open, date, existing]);
+
+  /** Semua jalur tutup (Esc/backdrop/X/Batal) lewat sini agar input tidak hilang. */
+  const finishClose = (): void => {
+    setCloseConfirm(false);
+    onClose();
+    if (closeThenSettings) {
+      setCloseThenSettings(false);
+      onGoToSettings();
+    }
+  };
+
+  const requestClose = (thenSettings = false): void => {
+    if (isSaving || isFetchingMeta) return;
+    if (hasUnsavedChanges()) {
+      setCloseThenSettings(thenSettings);
+      setCloseConfirm(true);
+      return;
+    }
+    if (thenSettings) onGoToSettings();
+    onClose();
+  };
+
+  if (closeGuardRef) closeGuardRef.current = requestClose;
 
   const handleFetchRecentMeta = async () => {
     setIsFetchingMeta(true);
@@ -329,7 +360,7 @@ export function InputModal({
 
   const handleSave = async () => {
     if (!user || !db) {
-      toast.error('Anda harus login untuk menyimpan data');
+      toast.error('Database lokal belum siap — jalankan ReSo Desktop');
       return;
     }
 
@@ -471,12 +502,12 @@ export function InputModal({
   };
 
   return (
-    <AnimatePresence>
-      {open && (
+    <>
+      <AnimatePresence>
+        {open && (
         <div
           className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-slate-900/50 backdrop-blur-[2px] p-0 sm:p-4"
-          onClick={isSaving || isFetchingMeta ? undefined : onClose}
-          aria-hidden={isSaving || isFetchingMeta ? 'true' : undefined}
+          onClick={isSaving || isFetchingMeta ? undefined : () => requestClose()}
           role="presentation"
         >
           <motion.div
@@ -485,6 +516,7 @@ export function InputModal({
             role="dialog"
             aria-modal="true"
             aria-labelledby="input-rekap-title"
+            aria-busy={isSaving || isFetchingMeta}
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 12 }}
@@ -532,7 +564,7 @@ export function InputModal({
                   )}
                 </p>
               </div>
-              <Button variant="ghost" size="icon" onClick={onClose} disabled={isSaving || isFetchingMeta} aria-label="Tutup" className="h-8 w-8 shrink-0 rounded-lg hover:bg-slate-100 disabled:opacity-50">
+              <Button variant="ghost" size="icon" onClick={() => requestClose()} disabled={isSaving || isFetchingMeta} aria-label="Tutup" className="h-8 w-8 shrink-0 rounded-lg hover:bg-slate-100 disabled:opacity-50">
                 <X className="text-slate-500" size={16} />
               </Button>
             </div>
@@ -571,7 +603,7 @@ export function InputModal({
                     {!metaToken.trim() ? (
                       <button
                         type="button"
-                        onClick={() => { onClose(); onGoToSettings(); }}
+                        onClick={() => requestClose(true)}
                         className="text-[10px] font-semibold text-slate-500 underline underline-offset-2 hover:text-slate-700"
                       >
                         Atur token Meta di Pengaturan
@@ -817,7 +849,7 @@ export function InputModal({
             </div>
 
             <div className="flex shrink-0 items-center justify-end gap-2 border-t border-slate-200 px-4 py-3">
-              <Button variant="ghost" onClick={onClose} disabled={isSaving || isFetchingMeta} className="h-8 rounded-lg px-3 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50">
+              <Button variant="ghost" onClick={() => requestClose()} disabled={isSaving || isFetchingMeta} className="h-8 rounded-lg px-3 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50">
                 Batal
               </Button>
               <Button
@@ -831,6 +863,19 @@ export function InputModal({
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+      </AnimatePresence>
+      <ConfirmDialog
+        open={closeConfirm}
+        title="Buang perubahan yang belum disimpan?"
+        description="Rekap yang Anda tempel atau tarik belum disimpan. Tutup modal ini akan membuang perubahan tersebut."
+        confirmLabel="Buang perubahan"
+        cancelLabel="Kembali mengedit"
+        onCancel={() => {
+          setCloseConfirm(false);
+          setCloseThenSettings(false);
+        }}
+        onConfirm={finishClose}
+      />
+    </>
   );
 }

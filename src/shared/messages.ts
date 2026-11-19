@@ -31,12 +31,12 @@ export function doneMessage(
 
   if (reason === 'stopped') {
     return c
-      ? `Dihentikan — ${c} ${word}.${extra} Klik Rekap + Kirim untuk mengirim.`
+      ? `Dihentikan — ${c} ${word}.${extra} Salin daftar nama; data tersimpan lokal.`
       : `Dihentikan — belum ada ${word}.${extra}`
   }
   if (reason === 'timeout') {
     return c
-      ? `Waktu habis — ${c} ${word} (mungkin belum semua).${extra} Klik Rekap + Kirim untuk mengirim.`
+      ? `Waktu habis — ${c} ${word} (mungkin belum semua).${extra} Salin daftar nama; data tersimpan lokal.`
       : `Waktu habis — belum ada ${word}.${extra}`
   }
   if (reason === 'incomplete') {
@@ -45,7 +45,7 @@ export function doneMessage(
       : `Belum ada ${word} — pagination belum tuntas.${extra}`
   }
   if (reason === 'idle' || reason === 'complete') {
-    if (c) return `Selesai — ${c} ${word}.${extra} Klik Rekap + Kirim untuk mengirim.`
+    if (c) return `Selesai — ${c} ${word}.${extra} Salin daftar nama; data tersimpan lokal.`
     if (tip) return `Tidak ada ${word}.${tip}`
     if (platform === 'facebook')
       return 'Tidak ada nama. Buka permalink post, buka list komentar sampai terlihat, tunggu 2–3 dtk, lalu Proses lagi.'

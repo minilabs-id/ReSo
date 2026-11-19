@@ -322,7 +322,20 @@ function emit(): void {
   })
 }
 
+let bridgeSubscribed = false
+
+/** Terima siaran `reso:db:changed` dari main (importAll, scraper, dll.). */
+function ensureBridgeSubscription(): void {
+  if (bridgeSubscribed) return
+  const b = bridge()
+  if (b?.onChanged) {
+    b.onChanged(() => emit())
+    bridgeSubscribed = true
+  }
+}
+
 function subscribe(fn: Listener): () => void {
+  ensureBridgeSubscription()
   listeners.add(fn)
   return () => listeners.delete(fn)
 }

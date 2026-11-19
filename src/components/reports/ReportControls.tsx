@@ -24,6 +24,10 @@ interface ReportControlsProps {
   onExportExcel: () => void;
   onExportImage: () => void;
   canExportImage?: boolean;
+  /** Set to false to disable the "next period" button (e.g. future periods not available yet). */
+  canGoNext?: boolean;
+  /** When provided, the image-export limit note includes the current employee count. */
+  employeeCount?: number;
   isLoading?: boolean;
 }
 
@@ -42,8 +46,14 @@ export function ReportControls({
   onExportExcel,
   onExportImage,
   canExportImage = true,
+  canGoNext = true,
+  employeeCount,
   isLoading = false,
 }: ReportControlsProps) {
+  const imageLimitNote = employeeCount !== undefined
+    ? `Gambar maks 60 pegawai (saat ini ${employeeCount})`
+    : EXPORT_LIMIT_NOTE;
+
   return (
     <motion.div
       variants={itemVariants}
@@ -67,14 +77,14 @@ export function ReportControls({
               {currentBadge && (
                 <Badge
                   variant="outline"
-                  className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px] px-1.5 py-0 font-semibold"
+                  className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px] px-1.5 py-0 font-semibold"
                 >
                   {currentBadge}
                 </Badge>
               )}
             </div>
             {subtitle && (
-              <p className="text-[9px] md:text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
                 {subtitle}
               </p>
             )}
@@ -83,8 +93,10 @@ export function ReportControls({
             variant="ghost"
             size="icon"
             onClick={onNext}
+            disabled={!canGoNext}
+            title={!canGoNext ? 'Periode mendatang belum tersedia' : undefined}
             aria-label="Berikutnya"
-            className="rounded-lg text-slate-600 hover:bg-white shrink-0"
+            className="rounded-lg text-slate-600 hover:bg-white shrink-0 disabled:opacity-40"
           >
             <ChevronRight size={16} />
           </Button>
@@ -92,22 +104,32 @@ export function ReportControls({
 
         {/* Sortir + export */}
         <div className="flex flex-col sm:flex-row gap-2 w-full xl:w-auto">
-          <div className="flex bg-slate-100 p-1.5 rounded-xl w-full sm:w-auto justify-center sm:justify-start">
-            {sortOptions.map((opt) => (
-              <button
-                key={opt.value}
-                type="button"
-                onClick={() => onSortChange(opt.value)}
-                className={cn(
-                  'flex-1 sm:flex-none px-3 py-2 text-xs font-semibold rounded-lg transition-colors',
-                  activeSort === opt.value
-                    ? 'bg-white text-slate-900 shadow-sm'
-                    : 'text-slate-500 hover:text-slate-700'
-                )}
-              >
-                {opt.label}
-              </button>
-            ))}
+          <div className="flex flex-col gap-1 w-full sm:w-auto">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+              Urutkan:
+            </span>
+            <div
+              role="group"
+              aria-label="Urutkan laporan"
+              className="flex bg-slate-100 p-1.5 rounded-xl w-full sm:w-auto justify-center sm:justify-start"
+            >
+              {sortOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => onSortChange(opt.value)}
+                  aria-pressed={activeSort === opt.value}
+                  className={cn(
+                    'flex-1 sm:flex-none px-3 py-2 text-xs font-semibold rounded-lg transition-colors',
+                    activeSort === opt.value
+                      ? 'bg-white text-slate-900 shadow-sm'
+                      : 'text-slate-500 hover:text-slate-700'
+                  )}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
           <div className="grid grid-cols-3 gap-2 w-full sm:w-auto">
             <Button
@@ -130,16 +152,22 @@ export function ReportControls({
             <Button
               onClick={onExportImage}
               disabled={isLoading || !canExportImage}
+              title={!canExportImage ? imageLimitNote : undefined}
               variant="outline"
-              className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs"
+              className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs disabled:opacity-50"
             >
               <ImageIcon size={14} />
               Gambar
             </Button>
           </div>
           {!canExportImage && (
-            <p className="w-full text-[9px] text-slate-400 font-medium text-center sm:text-left">
-              {EXPORT_LIMIT_NOTE}
+            <p className="w-full text-[11px] text-slate-500 font-medium text-center sm:text-left">
+              {imageLimitNote}
+            </p>
+          )}
+          {isLoading && (
+            <p role="status" aria-live="polite" className="w-full text-[11px] font-semibold text-slate-600 text-center sm:text-left">
+              Menyiapkan ekspor…
             </p>
           )}
         </div>

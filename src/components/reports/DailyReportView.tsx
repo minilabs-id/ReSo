@@ -18,6 +18,10 @@ interface DailyReportViewProps {
   handleExportImage: (type: 'daily' | 'weekly' | 'monthly', filename: string) => void;
   handleExportExcel: (type: 'daily' | 'weekly' | 'monthly', filename: string) => void;
   canExportImage: boolean;
+  /** Set to false to disable the "next period" button in the report controls. */
+  canGoNext?: boolean;
+  /** Employee count shown in the image-export limit note. */
+  employeeCount?: number;
   printDailyRef: React.RefObject<HTMLDivElement | null>;
   isLoading: boolean;
   sortedEmployees: Employee[];
@@ -34,6 +38,8 @@ export function DailyReportView({
   handleExportImage,
   handleExportExcel,
   canExportImage,
+  canGoNext = true,
+  employeeCount,
   printDailyRef,
   isLoading,
   sortedEmployees,
@@ -72,6 +78,8 @@ export function DailyReportView({
         onExportExcel={() => handleExportExcel('daily', `recaplink-harian-${dateStr}`)}
         onExportImage={() => handleExportImage('daily', `recaplink-harian-${dateStr}`)}
         canExportImage={canExportImage}
+        canGoNext={canGoNext}
+        employeeCount={employeeCount ?? sortedEmployees.length}
         isLoading={isLoading}
       />
 
@@ -84,12 +92,12 @@ export function DailyReportView({
           <div className="flex items-center bg-slate-50 rounded-lg border border-slate-200 p-3 gap-4">
             <div className="flex flex-col items-end justify-center">
               <p className="font-black text-emerald-600 leading-none text-[18px]">{dailyEngagementRate}%</p>
-              <p className="font-bold text-slate-500 uppercase tracking-widest leading-none text-[8px] mt-1">Rate</p>
+              <p className="font-bold text-slate-500 uppercase tracking-widest leading-none text-[11px] mt-1">Rate</p>
             </div>
             <div className="w-px bg-slate-200 h-7"></div>
             <div className="flex flex-col justify-center text-right">
-              <p className="font-bold text-slate-900 uppercase tracking-widest leading-none text-[10px]">ReSo</p>
-              <p className="text-slate-500 leading-none text-[8px] mt-1">Gen: {new Date().toLocaleDateString('id-ID')}</p>
+              <p className="font-bold text-slate-900 uppercase tracking-widest leading-none text-[11px]">ReSo</p>
+              <p className="text-slate-500 leading-none text-[11px] mt-1">Gen: {new Date().toLocaleDateString('id-ID')}</p>
             </div>
           </div>
         </div>
@@ -106,15 +114,15 @@ export function DailyReportView({
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900 truncate">{emp.name}</p>
                     <p className="text-[11px] text-slate-500 truncate">
-                      <span className={cn('font-medium px-1.5 py-0.5 rounded text-[10px]', getBidangColor(emp.bidang))}>
+                      <span className={cn('font-medium px-1.5 py-0.5 rounded text-[11px]', getBidangColor(emp.bidang))}>
                         {emp.bidang || '—'}
                       </span>
                     </p>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold border', hasIg ? 'bg-pink-50 text-pink-600 border-pink-100' : 'bg-white text-slate-300 border-slate-200')}>IG</span>
-                    <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold border', hasFb ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-white text-slate-300 border-slate-200')}>FB</span>
-                    <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold border', hasTiktok ? 'bg-slate-200 text-slate-800 border-slate-300' : 'bg-white text-slate-300 border-slate-200')}>TT</span>
+                    <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold border', hasIg ? 'bg-pink-50 text-pink-600 border-pink-100' : 'bg-white text-slate-300 border-slate-200')}>IG</span>
+                    <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold border', hasFb ? 'bg-blue-50 text-blue-600 border-blue-100' : 'bg-white text-slate-300 border-slate-200')}>FB</span>
+                    <span className={cn('w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold border', hasTiktok ? 'bg-slate-200 text-slate-800 border-slate-300' : 'bg-white text-slate-300 border-slate-200')}>TT</span>
                     <span className="text-xs font-bold text-slate-600 w-6 text-right">{score}/3</span>
                   </div>
                 </div>
@@ -130,12 +138,12 @@ export function DailyReportView({
             <Table className="border-collapse w-full">
               <TableHeader>
                 <TableRow className="bg-slate-50/50 border-b border-slate-200">
-                  <TableHead className="sticky left-0 z-20 bg-slate-50 border-r border-slate-200 px-1.5 py-1 font-bold text-slate-900 whitespace-nowrap text-[10px] uppercase tracking-wider h-auto">Nama Pegawai</TableHead>
-                  <TableHead className="border-r border-slate-200 px-1.5 py-1 font-bold text-slate-900 w-[1%] whitespace-nowrap text-[10px] uppercase tracking-wider h-auto">NIP</TableHead>
-                  <TableHead className="border-r border-slate-200 px-1.5 py-1 font-bold text-slate-900 w-[1%] whitespace-nowrap text-[10px] uppercase tracking-wider h-auto">Bidang</TableHead>
-                  <TableHead className="border-r border-slate-200 text-center px-1.5 py-1 text-[10px] font-bold text-slate-900 uppercase tracking-wider h-auto w-[1%] whitespace-nowrap">Instagram</TableHead>
-                  <TableHead className="text-center px-1.5 py-1 text-[10px] font-bold text-slate-900 uppercase tracking-wider h-auto w-[1%] whitespace-nowrap">Facebook</TableHead>
-                  <TableHead className="border-l border-slate-200 text-center px-1.5 py-1 text-[10px] font-bold text-slate-900 uppercase tracking-wider h-auto w-[1%] whitespace-nowrap">TikTok</TableHead>
+                  <TableHead className="sticky left-0 z-20 bg-slate-50 border-r border-slate-200 px-1.5 py-1 font-bold text-slate-900 whitespace-nowrap text-[11px] uppercase tracking-wider h-auto">Nama Pegawai</TableHead>
+                  <TableHead className="border-r border-slate-200 px-1.5 py-1 font-bold text-slate-900 w-[1%] whitespace-nowrap text-[11px] uppercase tracking-wider h-auto">NIP</TableHead>
+                  <TableHead className="border-r border-slate-200 px-1.5 py-1 font-bold text-slate-900 w-[1%] whitespace-nowrap text-[11px] uppercase tracking-wider h-auto">Bidang</TableHead>
+                  <TableHead className="border-r border-slate-200 text-center px-1.5 py-1 text-[11px] font-bold text-slate-900 uppercase tracking-wider h-auto w-[1%] whitespace-nowrap">Instagram</TableHead>
+                  <TableHead className="text-center px-1.5 py-1 text-[11px] font-bold text-slate-900 uppercase tracking-wider h-auto w-[1%] whitespace-nowrap">Facebook</TableHead>
+                  <TableHead className="border-l border-slate-200 text-center px-1.5 py-1 text-[11px] font-bold text-slate-900 uppercase tracking-wider h-auto w-[1%] whitespace-nowrap">TikTok</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -182,22 +190,22 @@ export function DailyReportView({
                         <p className="text-slate-500 text-[11px] font-mono">{emp.nip || '-'}</p>
                       </TableCell>
                       <TableCell className="border-r border-slate-200 px-1.5 py-0.5 w-[1%] whitespace-nowrap">
-                        <span className={cn("text-[9px] font-mono font-bold px-1 py-0 rounded uppercase tracking-wider", getBidangColor(emp.bidang))}>
+                        <span className={cn("text-[11px] font-mono font-bold px-1 py-0 rounded uppercase tracking-wider", getBidangColor(emp.bidang))}>
                           {emp.bidang || '---'}
                         </span>
                       </TableCell>
                       <TableCell className="border-r border-slate-50 text-center p-0 w-[1%] whitespace-nowrap">
-                        <div className="flex items-center justify-center py-0.5">
+                        <div className="flex items-center justify-center py-0.5" role="img" aria-label={`Instagram: ${isFuture ? 'belum tersedia' : hasIg ? 'sudah engage' : 'belum engage'}`} title={`Instagram: ${isFuture ? 'belum tersedia' : hasIg ? 'sudah engage' : 'belum engage'}`}>
                           {!isFuture ? (hasIg ? <Heart size={14} className="text-pink-500" fill="currentColor" /> : <X size={14} className="text-red-500" strokeWidth={3} />) : null}
                         </div>
                       </TableCell>
                       <TableCell className="border-r border-slate-50 text-center p-0 w-[1%] whitespace-nowrap">
-                        <div className="flex items-center justify-center py-0.5">
+                        <div className="flex items-center justify-center py-0.5" role="img" aria-label={`Facebook: ${isFuture ? 'belum tersedia' : hasFb ? 'sudah engage' : 'belum engage'}`} title={`Facebook: ${isFuture ? 'belum tersedia' : hasFb ? 'sudah engage' : 'belum engage'}`}>
                           {!isFuture ? (hasFb ? <ThumbsUp size={14} className="text-blue-500" fill="currentColor" /> : <X size={14} className="text-red-500" strokeWidth={3} />) : null}
                         </div>
                       </TableCell>
                       <TableCell className="text-center p-0 w-[1%] whitespace-nowrap">
-                        <div className="flex items-center justify-center py-0.5">
+                        <div className="flex items-center justify-center py-0.5" role="img" aria-label={`TikTok: ${isFuture ? 'belum tersedia' : hasTiktok ? 'sudah engage' : 'belum engage'}`} title={`TikTok: ${isFuture ? 'belum tersedia' : hasTiktok ? 'sudah engage' : 'belum engage'}`}>
                           {!isFuture ? (hasTiktok ? <TiktokIcon size={14} className="text-slate-800" fill="currentColor" /> : <X size={14} className="text-red-500" strokeWidth={3} />) : null}
                         </div>
                       </TableCell>

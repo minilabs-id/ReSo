@@ -62,6 +62,12 @@ const api = {
     deleteSetting: (key: string) => ipcRenderer.invoke(IPC.dbDeleteSetting, key),
     exportAll: () => ipcRenderer.invoke(IPC.dbExportAll),
     importAll: (payload: unknown) => ipcRenderer.invoke(IPC.dbImportAll, payload),
+    /** Siaran perubahan DB dari main (import/scraper) → segarkan onSnapshot. */
+    onChanged: (cb: () => void): (() => void) => {
+      const listener = () => cb()
+      ipcRenderer.on(IPC.dbChanged, listener)
+      return () => ipcRenderer.removeListener(IPC.dbChanged, listener)
+    },
   },
 }
 

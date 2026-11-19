@@ -112,6 +112,23 @@ Verifikasi tiap batch: `npm test`, `npm run typecheck:desktop`, `npm run dist:wi
 
 ---
 
-## 6. Status
+## 6. Status perbaikan — SELESAI (2026-11-19)
 
-Audit ini **tidak mengubah kode**. Temuan di atas berdasarkan kode pada commit `df840ef` dan app terpaket `ReSoSetup-1.0.86.exe`.
+Seluruh temuan di atas sudah diperbaiki dan diverifikasi ulang pada app terpaket:
+
+| Grup | Perbaikan |
+|------|-----------|
+| P1-1 | `useAppLogo` kini memakai data URL SVG (`src/assets/logo.svg`), tampil di sidebar/Pengaturan dan bisa di-fetch untuk PDF. |
+| P1-2 | Token `--color-primary` dkk. ditambahkan di `@theme inline`; tombol “Proses” & tab platform aktif kini berlatar gelap. |
+| P1-3 | Penomoran tabel pegawai mulai dari 1 (double `+1` dihapus). |
+| P1-4 | Pengaturan punya seksi **Data lokal**: path DB, jumlah data, cadangan JSON (`exportAll`), pulihkan (`importAll`) dengan konfirmasi. |
+| P1-5 | Seksi ekstensi dihapus; copy “login/server/Rekap + Kirim/dinas” diganti bahasa offline; halaman galat diberi versi + aksi. |
+| P1-6 | `InputModal.requestClose()` dipakai backdrop/X/Batal/Esc/back-button; konfirmasi “Buang perubahan” muncul saat dirty (diverifikasi lewat CDP). |
+| P1-7 | `useDialogA11y` sekarang stack-aware (hanya dialog teratas yang menjebak fokus); modal review masuk Esc + scroll-lock; pesan scraper tidak lagi `truncate`. |
+| P2-1 | `minWidth` dinaikkan ke 1024 agar tidak jatuh ke shell mobile. |
+| P2-2…P2-8 | `canGoNext` + `employeeCount` + `weekRange`; filename ekspor mengikuti periode; sort harian/mingguan dipisah; legenda 3 teratas/terbawah; label “Minggu ISO”; `aria-label`/`aria-pressed`/status sel tabel; caption ekspor. |
+| P2-9…P2-16 | Loading awal & export dibedakan; konfirmasi aksi berbahaya; preferensi scraper + `Sertakan balasan`; salin hasil filter; chart lebih kontras & aksesibel; siaran `reso:db:changed` dari main → `onSnapshot` segar; tipografi ≥11 px; ErrorBoundary `role="alert"` + salin detail. |
+
+**Verifikasi:** `npm test` hijau, `tsc --noEmit` + `typecheck:desktop` hijau, `npm run dist:win` sukses, screenshot 1280×800 menunjukkan logo/button/nomor baris benar, dan uji CDP dirty-close menghasilkan dialog konfirmasi.
+
+Build awal audit: commit `df840ef`. Perbaikan: commit terakhir di `main` (lihat `git log -1`).

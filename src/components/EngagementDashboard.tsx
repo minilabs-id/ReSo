@@ -40,6 +40,7 @@ import ScraperTab from './tabs/ScraperTab';
 import { DailyReportView } from './reports/DailyReportView';
 import { WeeklyReportView } from './reports/WeeklyReportView';
 import { MonthlyReportView } from './reports/MonthlyReportView';
+import { ConfirmDialog } from './ui/confirm-dialog';
 
 const PLATFORM_LABEL: Record<UnmatchedName['platform'], string> = { ig: 'IG', fb: 'FB', tiktok: 'TikTok' };
 const EmployeeManager = React.lazy(() => import('./EmployeeManager'));
@@ -82,11 +83,14 @@ export default function EngagementDashboard() {
   const [selectedDate, setSelectedDate] = useState(getLocalISODate(new Date()));
   const [isInputModalOpen, setIsInputModalOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
+  const [dataLoading, setDataLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [currentWeekDate, setCurrentWeekDate] = useState(new Date());
   const [currentMonthlyReportDate, setCurrentMonthlyReportDate] = useState(new Date());
   const [currentDailyDate, setCurrentDailyDate] = useState(new Date());
+  const [dailySortMode, setDailySortMode] = useState<'name' | 'bidang'>('bidang');
   const [weeklySortMode, setWeeklySortMode] = useState<'name' | 'bidang'>('bidang');
   const [monthlySortMode, setMonthlySortMode] = useState<'rank' | 'bidang' | 'name'>('rank');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -136,10 +140,10 @@ export default function EngagementDashboard() {
         updatedAt: serverTimestamp()
       });
       setMetaToken(trimmed);
-      toast.success("Token API Meta berhasil disimpan ke server");
+      toast.success('Token API Meta tersimpan lokal di mesin ini');
     } catch (err) {
-      console.error("Error saving meta token:", err);
-      toast.error("Gagal menyimpan token ke server");
+      console.error('Error saving meta token:', err);
+      toast.error('Gagal menyimpan token ke database lokal');
     } finally {
       setIsSavingToken(false);
     }
@@ -177,9 +181,11 @@ export default function EngagementDashboard() {
       (snapshot) => {
         const emps = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Employee));
         setEmployees(emps);
+        setDataLoading(false);
       },
       (err) => {
         console.error('Gagal memuat pegawai:', err);
+        setDataLoading(false);
         toast.error('Gagal memuat data pegawai');
       }
     );
@@ -223,9 +229,11 @@ export default function EngagementDashboard() {
       (snapshot) => {
         const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as DailyEngagement));
         setDailyEngagements(data);
+        setDataLoading(false);
       },
       (err) => {
         console.error('Gagal memuat rekap harian:', err);
+        setDataLoading(false);
         toast.error('Gagal memuat data rekap');
       }
     );
@@ -246,10 +254,13 @@ export default function EngagementDashboard() {
     [dailyEngagementsMap]
   );
   const [isVerifyingAll, setIsVerifyingAll] = useState(false);
+  const [verifyAllConfirm, setVerifyAllConfirm] = useState(false);
+  /** Diisi InputModal supaya Esc/back-button memakai dirty-check-nya. */
+  const inputCloseGuardRef = useRef<(() => void) | null>(null);
 
   const handleVerifyAllAutoFilled = async () => {
-    if (!user) {
-      toast.error('Anda harus login untuk menyimpan data');
+    if (!user || !db) {
+      toast.error('Database lokal belum siap — coba lagi');
       return;
     }
     if (!unverifiedAutoFilledDates.length) return;
@@ -908,20 +919,24 @@ export default function EngagementDashboard() {
 
   // Lock body scroll when overlays open
   useEffect(() => {
-    if (!isInputModalOpen && !isMoreOpen && !isSidebarOpen) return;
+    if (!isInputModalOpen && !isUnmatchedReviewOpen && !isMoreOpen && !isSidebarOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [isInputModalOpen, isMoreOpen, isSidebarOpen]);
+  }, [isInputModalOpen, isUnmatchedReviewOpen, isMoreOpen, isSidebarOpen]);
 
-  // Escape closes topmost overlay
+  // Escape closes topmost overlay. Modal input memakai guard-nya sendiri agar
+  // perubahan yang belum disimpan tidak hilang begitu saja.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
-      if (isInputModalOpen) {
-        closeInputModal();
+      if (isUnmatchedReviewOpen) {
+        setIsUnmatchedReviewOpen(false);
+      } else if (isInputModalOpen) {
+        if (inputCloseGuardRef.current) inputCloseGuardRef.current();
+        else closeInputModal();
       } else if (isMoreOpen) {
         setIsMoreOpen(false);
       } else if (isSidebarOpen) {
@@ -930,11 +945,11 @@ export default function EngagementDashboard() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isInputModalOpen, isMoreOpen, isSidebarOpen]);
+  }, [isUnmatchedReviewOpen, isInputModalOpen, isMoreOpen, isSidebarOpen]);
 
   const handleRecalculateAll = async () => {
-    if (!user) {
-      toast.error('Anda harus login untuk melakukan kalkulasi ulang');
+    if (!user || !db) {
+      toast.error('Database lokal belum siap — jalankan ReSo Desktop');
       return;
     }
     
@@ -946,7 +961,7 @@ export default function EngagementDashboard() {
     // Client-side primary: works on Vercel free static (no Express). Same matching as save.
     toast.info('Memulai kalkulasi ulang data...');
 
-    setIsLoading(true);
+    setIsRecalculating(true);
     try {
       const dateBoundaryStart = new Date();
       if (recalculateConfig.mode === 'last_day') {
@@ -1017,7 +1032,7 @@ export default function EngagementDashboard() {
       const message = error instanceof Error ? error.message : 'Kesalahan tidak diketahui';
       toast.error('Gagal melakukan kalkulasi ulang: ' + message);
     } finally {
-      setIsLoading(false);
+      setIsRecalculating(false);
     }
   };
 
@@ -1313,6 +1328,14 @@ export default function EngagementDashboard() {
   };
 
   const currentDailyDateStr = getLocalISODate(currentDailyDate);
+  const todayISO = getLocalISODate(new Date());
+  const lastWeeklyISO = weeklyDatesList.reduce((a, b) => (a > b ? a : b), '');
+  const canGoNextDaily = currentDailyDateStr < todayISO;
+  const canGoNextWeekly = lastWeeklyISO ? lastWeeklyISO < todayISO : true;
+  const canGoNextMonthly =
+    currentMonthlyReportDate.getFullYear() < new Date().getFullYear() ||
+    (currentMonthlyReportDate.getFullYear() === new Date().getFullYear() &&
+      currentMonthlyReportDate.getMonth() < new Date().getMonth());
   const currentDailyEngagementOptions = dailyEngagementsMap[currentDailyDateStr];
   let dailyPossible = 0;
   let dailyActual = 0;
@@ -1334,6 +1357,7 @@ export default function EngagementDashboard() {
   if (!db) return null;
 
   return (
+    <>
     <div className="flex h-[100dvh] bg-slate-50 font-sans overflow-hidden relative">
       {/* Mobile Sidebar Overlay */}
       <AnimatePresence>
@@ -1462,6 +1486,7 @@ export default function EngagementDashboard() {
                     setIsInputModalOpen(true);
                   }}
                   onGoDaily={() => setActiveTab('daily-report')}
+                  dataLoading={dataLoading}
                 />
               )}
                {activeTab === 'overview' && (
@@ -1478,7 +1503,7 @@ export default function EngagementDashboard() {
                     <div className="flex flex-col lg:flex-row items-stretch lg:items-center gap-2.5 mb-3">
                       <div className="flex items-center justify-between lg:justify-start gap-2">
                         <div className="flex items-center gap-1.5 bg-slate-50 p-1 rounded-xl border border-slate-200 shrink-0">
-                          <Button variant="ghost" size="icon" onClick={() => changeMonth(-1)} className="rounded-lg h-7 w-7 text-slate-600 hover:bg-white shrink-0">
+                          <Button variant="ghost" size="icon" onClick={() => changeMonth(-1)} aria-label="Bulan sebelumnya" title="Bulan sebelumnya" className="rounded-lg h-8 w-8 text-slate-600 hover:bg-white shrink-0">
                             <ChevronLeft size={14} />
                           </Button>
                           <div className="text-center min-w-[128px]">
@@ -1486,7 +1511,7 @@ export default function EngagementDashboard() {
                               {currentMonth.toLocaleString('id-ID', { month: 'long', year: 'numeric' })}
                             </h2>
                           </div>
-                          <Button variant="ghost" size="icon" onClick={() => changeMonth(1)} className="rounded-lg h-7 w-7 text-slate-600 hover:bg-white shrink-0">
+                          <Button variant="ghost" size="icon" onClick={() => changeMonth(1)} aria-label="Bulan berikutnya" title="Bulan berikutnya" className="rounded-lg h-8 w-8 text-slate-600 hover:bg-white shrink-0">
                             <ChevronRight size={14} />
                           </Button>
                         </div>
@@ -1495,7 +1520,7 @@ export default function EngagementDashboard() {
                           variant="outline"
                           size="sm"
                           onClick={() => setSelectedDate(getLocalISODate(new Date()))}
-                          className="text-[11px] font-bold border-slate-200 text-slate-600 hover:bg-slate-100 h-8 shrink-0 lg:hidden"
+                          className="text-[11px] font-bold border-slate-200 text-slate-600 hover:bg-slate-100 h-8 shrink-0"
                         >
                           Hari ini
                         </Button>
@@ -1535,7 +1560,7 @@ export default function EngagementDashboard() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={handleVerifyAllAutoFilled}
+                            onClick={() => setVerifyAllConfirm(true)}
                             disabled={isVerifyingAll}
                             className="text-[11px] font-bold border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 h-8 shrink-0"
                           >
@@ -1554,7 +1579,7 @@ export default function EngagementDashboard() {
                         <div className="min-w-[280px] sm:min-w-[400px] h-[calc(100dvh-14.5rem)] md:h-[calc(100dvh-12rem)] lg:h-[calc(100dvh-10.5rem)] min-h-[340px]">
                           <div className="grid grid-cols-7 grid-rows-[repeat(7,minmax(0,1fr))] gap-0.5 sm:gap-1 h-full">
                             {['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'].map(day => (
-                              <div key={day} className="text-center py-0.5 md:py-1 text-[8px] sm:text-[9px] font-bold text-slate-400 uppercase tracking-widest self-end">
+                              <div key={day} className="text-center py-0.5 md:py-1 text-[11px] font-bold text-slate-400 uppercase tracking-widest self-end">
                                 {day}
                               </div>
                             ))}
@@ -1707,6 +1732,7 @@ export default function EngagementDashboard() {
                     postedAt={selectedPostedAt}
                     unmatchedCount={selectedUnmatched.length}
                     onClose={closeInputModal}
+                    closeGuardRef={inputCloseGuardRef}
                     onOpenUnmatched={() => setIsUnmatchedReviewOpen(true)}
                     onGoToSettings={() => setActiveTab('settings')}
                   />
@@ -1740,7 +1766,7 @@ export default function EngagementDashboard() {
                                 {' · '}{selectedUnmatched.length} nama tanpa pegawai
                               </p>
                             </div>
-                            <Button variant="ghost" size="icon" onClick={() => setIsUnmatchedReviewOpen(false)} className="rounded-full bg-slate-100 hover:bg-slate-200 h-9 w-9">
+                            <Button variant="ghost" size="icon" onClick={() => setIsUnmatchedReviewOpen(false)} aria-label="Tutup panel pemetaan" title="Tutup panel pemetaan" className="rounded-full bg-slate-100 hover:bg-slate-200 h-9 w-9">
                               <X className="text-slate-600" size={18} />
                             </Button>
                           </div>
@@ -1803,8 +1829,10 @@ export default function EngagementDashboard() {
                 <DailyReportView
                   currentDailyDate={currentDailyDate}
                   changeDailyDate={changeDailyDate}
-                  weeklySortMode={weeklySortMode}
-                  setWeeklySortMode={setWeeklySortMode}
+                  canGoNext={canGoNextDaily}
+                  employeeCount={employees.length}
+                  weeklySortMode={dailySortMode}
+                  setWeeklySortMode={setDailySortMode}
                   handleExportPDF={handleExportPDF}
                   handleExportImage={handleExportImage}
                   handleExportExcel={handleExportExcel}
@@ -1823,6 +1851,9 @@ export default function EngagementDashboard() {
                   weeklyStats={weeklyStats}
                   weeklyDatesList={weeklyDatesList}
                   changeWeek={changeWeek}
+                  canGoNext={canGoNextWeekly}
+                  employeeCount={employees.length}
+                  weekRange={weeklyReports[0]?.weekRange}
                   weeklySortMode={weeklySortMode}
                   setWeeklySortMode={setWeeklySortMode}
                   handleExportPDF={handleExportPDF}
@@ -1842,6 +1873,8 @@ export default function EngagementDashboard() {
                   monthlyStats={monthlyStats}
                   sortedMonthlyEmployees={sortedMonthlyEmployees}
                   changeMonthlyReportDate={changeMonthlyReportDate}
+                  canGoNext={canGoNextMonthly}
+                  employeeCount={employees.length}
                   monthlySortMode={monthlySortMode}
                   setMonthlySortMode={setMonthlySortMode}
                   handleExportPDF={handleExportPDF}
@@ -1878,12 +1911,13 @@ export default function EngagementDashboard() {
                 recalculateConfig={recalculateConfig}
                 setRecalculateConfig={setRecalculateConfig}
                 handleRecalculateAll={handleRecalculateAll}
-                isLoading={isLoading}
+                isLoading={isRecalculating}
                 containerVariants={containerVariants}
                 metaToken={metaToken}
                 setMetaToken={setMetaToken}
                 handleSaveMetaToken={handleSaveMetaToken}
                 handleClearMetaToken={handleClearMetaToken}
+                onOpenScraper={() => setActiveTab('scraper')}
                 isSavingToken={isSavingToken}
                 recalcResult={recalcResult}
               />
@@ -1976,6 +2010,22 @@ export default function EngagementDashboard() {
       </nav>
 
     </div>
+
+      <ConfirmDialog
+        open={verifyAllConfirm}
+        title={`Verifikasi ${unverifiedAutoFilledDates.length} rekap otomatis?`}
+        description={`Ini akan menandai ${unverifiedAutoFilledDates.length} tanggal dari seluruh rentang riwayat yang dimuat (±4 bulan) sebagai terverifikasi. Periksa dulu datanya jika ragu.`}
+        confirmLabel="Ya, verifikasi semua"
+        cancelLabel="Batal"
+        tone="primary"
+        busy={isVerifyingAll}
+        onCancel={() => setVerifyAllConfirm(false)}
+        onConfirm={async () => {
+          setVerifyAllConfirm(false);
+          await handleVerifyAllAutoFilled();
+        }}
+      />
+    </>
   );
 }
 

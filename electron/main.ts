@@ -12,11 +12,20 @@ function isHttp(url: string): boolean {
   return url.startsWith('http://') || url.startsWith('https://')
 }
 
+/** Beri tahu renderer bahwa data lokal berubah (agar onSnapshot segar). */
+function broadcastDbChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(IPC.dbChanged)
+  }
+}
+
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
-    minWidth: 960,
+    // Harus >= breakpoint `lg` (1024px) Tailwind, kalau tidak sidebar desktop
+    // berubah jadi hamburger+bottom nav pada jendela minimum 960px.
+    minWidth: 1024,
     minHeight: 640,
     show: false,
     autoHideMenuBar: true,
@@ -91,17 +100,23 @@ function registerIpc(): void {
   ipcMain.handle(IPC.dbUpsertEmployee, (_event, payload: unknown) => {
     const emp = parseEmployee(payload)
     if (!emp) return { ok: false as const, reason: 'invalid-employee' }
-    return { ok: true as const, employee: db.upsertEmployee(emp) }
+    const employee = db.upsertEmployee(emp)
+    broadcastDbChanged()
+    return { ok: true as const, employee }
   })
   ipcMain.handle(IPC.dbReplaceEmployees, (_event, payload: unknown) => {
     const list = parseEmployeeList(payload)
     if (!list) return { ok: false as const, reason: 'invalid-list' }
-    return { ok: true as const, employees: db.replaceAllEmployees(list) }
+    const employees = db.replaceAllEmployees(list)
+    broadcastDbChanged()
+    return { ok: true as const, employees }
   })
   ipcMain.handle(IPC.dbDeleteEmployee, (_event, id: unknown) => {
     const key = typeof id === 'string' ? id.trim() : ''
     if (!key || key.length > 128) return { ok: false as const }
-    return { ok: db.deleteEmployee(key) }
+    const ok = db.deleteEmployee(key)
+    if (ok) broadcastDbChanged()
+    return { ok }
   })
   ipcMain.handle(IPC.dbGetDaily, (_event, date: unknown) => {
     const d = parseDate(date)
@@ -116,7 +131,9 @@ function registerIpc(): void {
   ipcMain.handle(IPC.dbUpsertDaily, (_event, date: unknown, patch: unknown) => {
     const d = parseDate(date)
     if (!d) return null
-    return db.upsertDaily(d, parseDailyPatch(patch))
+    const result = db.upsertDaily(d, parseDailyPatch(patch))
+    broadcastDbChanged()
+    return result
   })
   ipcMain.handle(IPC.dbStats, () => db.stats())
 
@@ -139,12 +156,14 @@ function registerIpc(): void {
     const parsed = parseSettingValue(value)
     if (!parsed.ok) return { ok: false as const, reason: 'invalid-value' }
     db.setSetting(k, parsed.value)
+    broadcastDbChanged()
     return { ok: true as const }
   })
   ipcMain.handle(IPC.dbDeleteSetting, (_event, key: unknown) => {
     const k = parseSettingKey(key)
     if (!k) return { ok: false as const }
     db.deleteSetting(k)
+    broadcastDbChanged()
     return { ok: true as const }
   })
   ipcMain.handle(IPC.dbListSettings, () => db.listSettingKeys())
@@ -165,6 +184,7 @@ function registerIpc(): void {
       }
     })
     tx()
+    broadcastDbChanged()
     return { ok: true as const, stats: db.stats() }
   })
 }

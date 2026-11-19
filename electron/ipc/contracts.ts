@@ -24,6 +24,7 @@ export const IPC = {
   dbListDailyRange: 'reso:db:list-daily-range',
   dbUpsertDaily: 'reso:db:upsert-daily',
   dbStats: 'reso:db:stats',
+  dbChanged: 'reso:db:changed',
   dbExportAll: 'reso:db:export-all',
   dbImportAll: 'reso:db:import-all',
   dbListSettings: 'reso:db:list-settings',
