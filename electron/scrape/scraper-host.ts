@@ -322,7 +322,7 @@ export function navigateHost(platform: Platform, action: 'back' | 'forward' | 'r
   try {
     if (action === 'back' && wc.navigationHistory.canGoBack()) wc.navigationHistory.goBack()
     else if (action === 'forward' && wc.navigationHistory.canGoForward()) wc.navigationHistory.goForward()
-    else if (action === 'reload') wc.reload()
+    else if (action === 'reload') wc.reloadIgnoringCache()
   } catch {
     /* navigasi dibatalkan */
   }

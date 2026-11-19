@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import {
   BarChart,
   Bar,
@@ -25,9 +26,29 @@ export default function EngagementChart({ data }: { data: EngagementChartPoint[]
   // Only show the TikTok bar/legend key when there is TikTok data to display.
   const hasTiktok = data.some((d) => (d.tiktok || 0) > 0);
 
+  // Recharts mengukur container saat mount; pada render pertama ukurannya bisa
+  // -1 sehingga memunculkan peringatan. Tunggu ukuran valid sebelum render chart.
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const r = entry.contentRect;
+      const width = Math.floor(r.width);
+      const height = Math.floor(r.height);
+      if (width > 0 && height > 0) setSize((prev) =>
+        prev.width === width && prev.height === height ? prev : { width, height }
+      );
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
   return (
-    <div className="relative w-full h-full">
-      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+    <div ref={wrapRef} className="relative h-full min-h-[200px] w-full">
+      {size.width > 0 && size.height > 0 && (
+      <ResponsiveContainer width={size.width} height={size.height} minWidth={0}>
         <BarChart data={data} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
           <XAxis
@@ -83,7 +104,7 @@ export default function EngagementChart({ data }: { data: EngagementChartPoint[]
           )}
         </BarChart>
       </ResponsiveContainer>
-
+      )}
       {!hasData && (
         <div className={cn(
           "absolute inset-0 flex flex-col items-center justify-center gap-1 text-center",

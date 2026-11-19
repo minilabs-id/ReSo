@@ -120,7 +120,7 @@ Saat browser langsung ke TikTok, area sempat kosong tanpa spinner/teks “Memuat
 | K-7 | ✅ Selesai | Chip status di atas browser: platform + `balasan ya/tidak` + peringatan FB/IG. |
 | K-8 | ✅ Selesai | Sinkron bounds di-throttle ~100 ms (bukan tiap frame). |
 
-Catatan: saat awal app muncul, Recharts mencatat peringatan konsol benign *“width(-1) and height(-1) of chart”* sebelum container terukur; tidak berdampak pada fungsi.
+Catatan tambahan (setelah eksekusi): peringatan Recharts *“width(-1) and height(-1)”* sudah dihilangkan dengan menunggu ukuran `ResizeObserver` dan memakai width/height numerik. Reload memakai `reloadIgnoringCache()` agar spinner benar-benar terlihat. Sapuan live terakhir: **15/15 lolos, konsol bersih**, dan verifikasi nonce tetap aman (marker console & nonce palsu ditolak, klik asli memicu run).
 
 ## 6. Kesimpulan akhir
 
