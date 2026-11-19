@@ -122,6 +122,15 @@ Saat browser langsung ke TikTok, area sempat kosong tanpa spinner/teks “Memuat
 
 Catatan tambahan (setelah eksekusi): peringatan Recharts *“width(-1) and height(-1)”* sudah dihilangkan dengan menunggu ukuran `ResizeObserver` dan memakai width/height numerik. Reload memakai `reloadIgnoringCache()` agar spinner benar-benar terlihat. Sapuan live terakhir: **15/15 lolos, konsol bersih**, dan verifikasi nonce tetap aman (marker console & nonce palsu ditolak, klik asli memicu run).
 
+### Uji dengan sesi login asli (pengguna)
+- Sesi login TikTok/Instagram ditemukan di profil demo, tetapi **tidak ada di profil default** (`%APPDATA%\reso`) — itulah sebabnya pengguna melihat sesi “hilang” saat membuka app biasa.
+- Partisi browser sudah disalin ke `%APPDATA%\reso\Partitions` dan dicadangkan ke `C:\Users\zo\AppData\Local\ReSo-Session-Backup\Partitions`. Cookie `sessionid` / `ds_user_id` terverifikasi ada.
+- Cookie Instagram ternyata tersimpan di partisi `reso-tiktok`; sudah disamakan ke partisi `reso-instagram`.
+- Perbaikan nonce: regenerasi dipindah ke awal navigasi dan verifikasi menerima 4 nonce terakhir (mengatasi race event yang membuat klik tombol Scrap ditolak).
+- Panel state diberi polling 1,5 dtk + `sendToRekap` mengambil state terbaru dan mencari platform yang benar-benar punya hasil (tidak bergantung pada tab UI yang bisa basi).
+- **Hasil uji nyata**: postingan Instagram `https://www.instagram.com/p/DfeEYCnk3ky/` → klik Scrap → `Selesai — 1 username` (`aikasihtau`) → klik “Masukkan ke rekap hari ini” → `igRawText` rekap 2026-11-19 berisi `aikasihtau`. **Tanpa paste manual.**
+- TikTok saat uji redirect ke halaman `/shortdrama` (anti-bot/region), jadi belum bisa diuji dengan postingan nyata; mekanismenya sama dengan IG.
+
 ## 6. Kesimpulan akhir
 
 Seluruh kritik yang bisa diperbaiki lokal sudah dituntaskan dan diverifikasi ulang: **7/8 poin selesai**, sisanya (K-4/K-5) memerlukan akun FB/IG nyata untuk validasi selector. Fitur browser + tombol Scrap kini aman dari marker palsu, address bar jujur, dan alur klik → rekap bekerja. Build tetap hijau (`npm test`, `typecheck:desktop`, `dist:win`).

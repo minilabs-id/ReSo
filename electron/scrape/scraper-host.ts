@@ -34,16 +34,15 @@ const VIEW_HEIGHT = 900
 /** id elemen tombol — dipakai untuk idempotensi injeksi. */
 const SCRAP_BUTTON_ID = '__reso_scrap_btn'
 
-/** Nonce per platform, diganti tiap kali halaman selesai dimuat. */
-const scrapNonce = new Map<Platform, string>()
+/** Riwayat nonce terakhir per platform (menoleransi race event navigasi). */
+const scrapNonce = new Map<Platform, string[]>()
 
 function nonceFor(platform: Platform): string {
-  let value = scrapNonce.get(platform)
-  if (!value) {
-    value = randomUUID()
-    scrapNonce.set(platform, value)
-  }
-  return value
+  const list = scrapNonce.get(platform)
+  if (list && list.length > 0) return list[0]
+  const fresh = randomUUID()
+  scrapNonce.set(platform, [fresh])
+  return fresh
 }
 
 /**
@@ -181,20 +180,30 @@ function injectInto(wc: WebContents, platform: Platform): void {
 function wireHostEvents(platform: Platform, view: WebContentsView): void {
   const wc = view.webContents
 
+  // Nonce diganti SEBELUM halaman dimuat, lalu dipakai semua injeksi untuk
+  // halaman itu. Kalau diganti setelah injeksi, tombol menyimpan nonce lama
+  // dan kliknya selalu ditolak (bug yang ditemukan saat uji postingan nyata).
+  const newNonce = (): void => {
+    const list = scrapNonce.get(platform) ?? []
+    scrapNonce.set(platform, [randomUUID(), ...list].slice(0, 4))
+  }
   const onSettled = (): void => {
     if (!isHttpUrl(wc.getURL())) return
-    // Regenerate nonce pada setiap halaman baru.
-    scrapNonce.set(platform, randomUUID())
+    if (!scrapNonce.has(platform)) newNonce()
     injectInto(wc, platform)
     broadcastNav(platform, wc)
     notifyRenderer(IPC.scrapeBrowserLoading, { platform, loading: false })
   }
   wc.on('did-finish-load', onSettled)
   wc.on('did-navigate-in-page', onSettled)
-  wc.on('did-navigate', () => broadcastNav(platform, wc))
-  wc.on('did-start-loading', () =>
+  wc.on('did-navigate', () => {
+    newNonce()
+    broadcastNav(platform, wc)
+  })
+  wc.on('did-start-loading', () => {
+    newNonce()
     notifyRenderer(IPC.scrapeBrowserLoading, { platform, loading: true })
-  )
+  })
 }
 
 /**
@@ -304,7 +313,7 @@ export function notifyScrapClick(platform: Platform): void {
 
 /** Verifikasi nonce klik terhadap nonce halaman aktif platform. */
 export function verifyScrapClick(platform: Platform, nonce: unknown): boolean {
-  return typeof nonce === 'string' && nonce.length > 8 && scrapNonce.get(platform) === nonce
+  return typeof nonce === 'string' && nonce.length > 8 && (scrapNonce.get(platform) ?? []).includes(nonce)
 }
 
 /** Platform asal sebuah webContents (dipakai main saat menerima IPC klik). */

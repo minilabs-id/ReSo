@@ -130,8 +130,17 @@ export default function ScraperPanel({
       if (cancelled) return;
       setStates((prev) => ({ ...prev, [p as Platform]: state }));
     });
+    // Jaring pengaman: siaran dari engine kadang tidak sampai ke renderer
+    // (mis. run selesai saat panel sedang diremount). Poll state main berkala.
+    const poll = setInterval(() => {
+      if (cancelled) return;
+      void getScrapeStates().then((all) => {
+        if (!cancelled && all) setStates((prev) => ({ ...prev, ...(all as Record<Platform, NameState>) }));
+      });
+    }, 1500);
     return () => {
       cancelled = true;
+      clearInterval(poll);
       off();
     };
   }, []);
@@ -297,10 +306,22 @@ export default function ScraperPanel({
 
   /** Masukkan nama hasil scrap ke raw text rekap hari ini — tanpa paste manual. */
   const sendToRekap = useCallback(async () => {
-    if (!isElectron || state.names.length === 0) return;
+    if (!isElectron) return;
+    // Ambil ulang state terbaru dari main — UI bisa tertinggal bila panel
+    // sempat diremount saat scraping berjalan.
+    const fresh = await getScrapeStates();
+    // Cari platform yang benar-benar punya hasil, jangan percaya state tab UI
+    // yang bisa tertinggal saat panel di-remount.
+    const populated = Object.entries(fresh ?? {}).find(([, s]) => s.names.length > 0);
+    const targetPlatform: Platform = (populated?.[0] as Platform) ?? platform;
+    const names = populated?.[1].names ?? state.names;
+    if (names.length === 0) {
+      toast.error('Belum ada hasil scrap untuk platform ini.');
+      return;
+    }
     const date = getLocalISODate(new Date());
     const field: 'igRawText' | 'fbRawText' | 'tiktokRawText' =
-      platform === 'instagram' ? 'igRawText' : platform === 'facebook' ? 'fbRawText' : 'tiktokRawText';
+      targetPlatform === 'instagram' ? 'igRawText' : targetPlatform === 'facebook' ? 'fbRawText' : 'tiktokRawText';
     try {
       const existing = await getDaily(date);
       const prev = String(existing?.[field] ?? '')
@@ -309,7 +330,7 @@ export default function ScraperPanel({
         .filter(Boolean);
       const seen = new Set(prev.map((s) => s.toLowerCase()));
       const merged = [...prev];
-      for (const name of state.names) {
+      for (const name of names) {
         const clean = name.trim();
         if (!clean || seen.has(clean.toLowerCase())) continue;
         seen.add(clean.toLowerCase());
@@ -317,7 +338,7 @@ export default function ScraperPanel({
       }
       const saved = await upsertDaily(date, { [field]: merged.join('\n') });
       if (!saved) throw new Error('Gagal menulis rekap');
-      toast.success(`${merged.length - prev.length} ${wordFor(platform)} masuk rekap ${date}`);
+      toast.success(`${merged.length - prev.length} ${wordFor(targetPlatform)} masuk rekap ${date}`);
       onOpenRekap?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Gagal memasukkan hasil ke rekap');
@@ -499,8 +520,8 @@ export default function ScraperPanel({
           <Button
             size="sm"
             onClick={() => void sendToRekap()}
-            disabled={!isElectron || state.count === 0}
-            title="Tulis hasil scrap ke rekap hari ini tanpa paste manual"
+            disabled={!isElectron}
+            title="Tulis hasil scrap terbaru ke rekap hari ini tanpa paste manual"
             className="bg-slate-900 text-white font-bold"
           >
             Masukkan ke rekap hari ini
