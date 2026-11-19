@@ -191,6 +191,11 @@ export function deleteDaily(date: string): boolean {
   return openDb().prepare('DELETE FROM daily_engagement WHERE date = ?').run(date).changes > 0
 }
 
+/** Hapus seluruh rekap — dipakai `importAll` agar restore benar-benar mengganti data. */
+export function clearAllDaily(): void {
+  openDb().prepare('DELETE FROM daily_engagement').run()
+}
+
 // ===================== Settings / meta =====================
 
 export function getSetting(key: string): string | null {

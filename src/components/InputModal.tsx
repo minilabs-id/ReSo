@@ -396,7 +396,7 @@ export function InputModal({
           await runTransaction(db, async (tx) => {
             tx.set(docRef, { date, verifiedAt: serverTimestamp() }, { merge: true });
           });
-          toast.success('Rekap ditandai terverifikasi — data sudah lengkap dari ReSoEx.');
+          toast.success('Rekap ditandai terverifikasi — data sudah lengkap dari rekap otomatis.');
         } else {
           toast.info('Tidak ada perubahan untuk disimpan');
         }
@@ -538,7 +538,7 @@ export function InputModal({
                           : 'border-amber-200 text-amber-700 bg-amber-50'
                       )}
                     >
-                      {existing?.verifiedAt ? 'ReSoEx · Terverifikasi' : 'ReSoEx · Perlu review'}
+                      {existing?.verifiedAt ? 'Rekap otomatis · Terverifikasi' : 'Rekap otomatis · Perlu review'}
                     </Badge>
                   )}
                   {unmatchedCount > 0 && (

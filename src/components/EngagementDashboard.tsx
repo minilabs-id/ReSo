@@ -430,7 +430,7 @@ export default function EngagementDashboard() {
         typeof eng.autoFilledCount === 'number' && eng.autoFilledCount > 0
           ? ` (${eng.autoFilledCount} nama baru)`
           : '';
-      toast.info(`Rekap ${selectedDate} diisi otomatis dari ReSoEx${count} — sudah tersimpan, cek rekapnya.`);
+      toast.info(`Rekap ${selectedDate} diisi otomatis (${count} nama) — sudah tersimpan lokal, cek rekapnya.`);
     }
   }, [selectedDate, dailyEngagementsMap]);
 
@@ -839,19 +839,15 @@ export default function EngagementDashboard() {
     }
     logoDataUrlCache = (async (): Promise<string | null> => {
       try {
-        const resp = await fetch('/logo.svg');
-        if (!resp.ok) throw new Error(`logo fetch ${resp.status}`);
-        const svgText = await resp.text();
+        // `appLogo` adalah data URL SVG dari Vite — bekerja di web dan di
+        // file:// Electron (fetch('/logo.svg') dulu jadi file:///D:/logo.svg).
         const img = new Image();
-        const blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        img.src = url;
+        img.src = appLogo;
         await new Promise<void>((resolve, reject) => { img.onload = () => resolve(); img.onerror = () => reject(); });
         const c = document.createElement('canvas');
         c.width = 64; c.height = 64;
         const ctx = c.getContext('2d')!;
         ctx.drawImage(img, 0, 0, 64, 64);
-        URL.revokeObjectURL(url);
         return c.toDataURL('image/png');
       } catch {
         logoDataUrlCache = null;

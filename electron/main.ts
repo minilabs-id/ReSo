@@ -176,6 +176,9 @@ function registerIpc(): void {
     const conn = db.openDb()
     const tx = conn.transaction(() => {
       db.replaceAllEmployees(employees)
+      // Restore = ganti seluruh data, bukan sekadar tambah: hapus rekap lama
+      // yang tidak ada di cadangan (kalau tidak, hari basi ikut terbawa).
+      db.clearAllDaily()
       for (const row of daily) {
         if (!isRecord(row)) continue
         const date = parseDate(row.date ?? row.id)

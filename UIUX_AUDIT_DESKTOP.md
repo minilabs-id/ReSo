@@ -131,4 +131,6 @@ Seluruh temuan di atas sudah diperbaiki dan diverifikasi ulang pada app terpaket
 
 **Verifikasi:** `npm test` hijau, `tsc --noEmit` + `typecheck:desktop` hijau, `npm run dist:win` sukses, screenshot 1280×800 menunjukkan logo/button/nomor baris benar, dan uji CDP dirty-close menghasilkan dialog konfirmasi.
 
+**Koreksi audit lanjutan (lihat `AUDIT_TOTAL.md` P1-6):** klaim awal bahwa logo PDF & copy ReSoEx sudah beres ternyata belum; keduanya diperbaiki setelahnya (`fetchLogoDataUrl` memakai data URL SVG; label diubah ke “Rekap otomatis”), demikian pula favicon relatif. Selain itu, uji E2E menemukan `importAll` tidak menghapus rekap lama — sudah diperbaiki dengan `clearAllDaily()`. Uji ulang: **17/17 skenario lolos**.
+
 Build awal audit: commit `df840ef`. Perbaikan: commit terakhir di `main` (lihat `git log -1`).
