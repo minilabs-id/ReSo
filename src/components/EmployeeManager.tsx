@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { addDoc, deleteDoc, doc, updateDoc, serverTimestamp, writeBatch, runTransaction, query, where, getDocs } from 'firebase/firestore';
+import { addDoc, deleteDoc, doc, updateDoc, serverTimestamp, writeBatch, runTransaction, query, where, getDocs, dinasCollection, dinasDoc } from '../lib/local-db';
 import { Employee } from '../types';
 import { Button, buttonVariants } from './ui/button';
 import { Input } from './ui/input';
@@ -9,10 +9,9 @@ import { Table, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Trash2, UserPlus, Save, X, Download, Upload, FileSpreadsheet, Users, Instagram, Facebook, User, CreditCard, UserCircle, Search, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { TiktokIcon } from './icons/TiktokIcon';
 import { toast } from 'sonner';
-import { useAuth } from './FirebaseProvider';
+import { useAuth, LOCAL_OPERATOR } from './LocalProvider';
 import { motion, AnimatePresence, type Variants } from 'motion/react';
 import { cn, getBidangColor } from '@/lib/utils';
-import { auth, dinasCollection, dinasDoc } from '../lib/firebase';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 
 enum OperationType {
@@ -46,23 +45,19 @@ interface FirestoreErrorInfo {
 function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errInfo: FirestoreErrorInfo = {
     error: error instanceof Error ? error.message : String(error),
+    // Aplikasi offline tanpa login: tidak ada identitas auth untuk dilaporkan.
     authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
+      userId: LOCAL_OPERATOR.uid,
+      email: LOCAL_OPERATOR.email,
+      emailVerified: true,
+      isAnonymous: false,
+      tenantId: undefined,
+      providerInfo: []
     },
     operationType,
     path
   }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  console.error('Database Error: ', JSON.stringify(errInfo));
   toast.error(`Gagal: ${errInfo.error}`);
   throw new Error(JSON.stringify(errInfo));
 }
@@ -462,8 +457,8 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
   };
 
   const processUploadedData = async (data: any[]) => {
-    if (!auth.currentUser) {
-      toast.error("Anda harus login untuk mengupload data");
+    if (!user) {
+      toast.error("Database lokal belum siap — coba lagi");
       return;
     }
 

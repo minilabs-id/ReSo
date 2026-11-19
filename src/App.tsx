@@ -4,12 +4,9 @@
  */
 
 import { useState, useEffect } from 'react';
-import { createTokenHandoffHandler, type HandoffTokenProvider } from './lib/token-handoff';
-import { pushTokenToExtension } from './lib/extension-bridge';
 import { motion } from 'motion/react';
 import EngagementDashboard from './components/EngagementDashboard';
-import LoginScreen from './components/LoginScreen';
-import { useAuth } from './components/FirebaseProvider';
+import { useAuth } from './components/LocalProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAppLogo } from './hooks/useAppLogo';
 import { Toaster } from './components/ui/sonner';
@@ -37,48 +34,34 @@ function LoadingScreen() {
   );
 }
 
-export default function App() {
-  const { user, loading, error } = useAuth();
-  const [showLoading, setShowLoading] = useState(true);
+/**
+ * Layar galat konfigurasi — HANYA muncul bila aplikasi dijalankan tanpa
+ * database lokal (mis. dibuka sebagai web biasa). Offline (#10) berarti tidak
+ * ada login: tidak ada layar masuk, tidak ada tombol "coba lagi" ke server.
+ */
+function DatabaseUnavailableScreen({ message }: { message: string }) {
+  const logoUrl = useAppLogo();
+  return (
+    <div className="flex flex-col items-center justify-center min-h-[100dvh] bg-slate-50 p-4">
+      <div className="bg-white p-8 rounded-xl border border-slate-200 flex flex-col items-center w-full max-w-md shadow-sm text-center">
+        <img src={logoUrl} alt="ReSo" className="w-16 h-16 object-contain mb-6" />
+        <h2 className="text-lg font-bold text-slate-900 mb-2">Database lokal tidak tersedia</h2>
+        <p className="text-sm text-slate-600 leading-relaxed">{message}</p>
+      </div>
+    </div>
+  );
+}
 
-  // Jembatan token (Opsi C — API): content script ekstensi meminta token sesi
-  // Firebase operator via CustomEvent. Zero setup: tidak ada login baru di
-  // ekstensi — reuse sesi Firebase ReSo yang sudah aktif.
-  // KEAMANAN SESI: ekstensi HANYA menerima idToken (masa ~1 jam), BUKAN refresh
-  // token. Firebase memutar & MENCABUT refresh token sumber tiap kali di-mint,
-  // sehingga mengirim refresh token (asli maupun hasil rotasi) ke ekstensi akan
-  // membatalkan sesi app ReSo sendiri → user logout. Ekstensi me-refresh idToken
-  // lewat push on-focus / handoff ulang saat tab ReSo terbuka (lihat
-  // src/lib/token-handoff.ts). Saluran balasan unik per permintaan + guard
-  // sekali-pakai + cek origin tetap berlaku.
-  useEffect(() => {
-    const provideTokens: HandoffTokenProvider = async () => {
-      if (!user) return null;
-      const idToken = await user.getIdToken(true);
-      return { idToken, uid: user.uid, email: user.email ?? null };
-    };
-    const onGetToken = createTokenHandoffHandler(provideTokens, window.location.origin);
-    window.addEventListener('reso:get-token', onGetToken);
-    // Jembatan ekstensi (app push): dorong token ke ekstensi ReSo saat login
-    // & tiap halaman mendapat fokus, sehingga ekstensi otomatis "Terhubung"
-    // tanpa harus membuka tab ReSo. Domain dipelajari dari origin halaman ini.
-    if (user) {
-      pushTokenToExtension(user).catch(() => {});
-      const onFocus = () => pushTokenToExtension(user).catch(() => {});
-      window.addEventListener('focus', onFocus);
-      return () => {
-        window.removeEventListener('reso:get-token', onGetToken);
-        window.removeEventListener('focus', onFocus);
-      };
-    }
-    return () => window.removeEventListener('reso:get-token', onGetToken);
-  }, [user]);
+export default function App() {
+  const { user, loading, error, hasDatabase } = useAuth();
+  const [showLoading, setShowLoading] = useState(true);
 
   useEffect(() => {
     if (loading) {
       setShowLoading(true);
       return;
     }
+    // Jedah singkat agar transisi keluar layar loading tidak berkedip.
     const timer = setTimeout(() => setShowLoading(false), 200);
     return () => clearTimeout(timer);
   }, [loading]);
@@ -92,19 +75,26 @@ export default function App() {
     );
   }
 
+  // Tanpa database lokal tidak ada yang bisa dikerjakan — tampilkan sebabnya,
+  // bukan layar login (login sudah tidak ada di aplikasi offline).
+  if (!hasDatabase || !user) {
+    return (
+      <>
+        <Toaster position="top-center" duration={2500} offset={16} />
+        <DatabaseUnavailableScreen
+          message={error ?? 'Jalankan aplikasi ReSo versi desktop (Electron) untuk membuka data.'}
+        />
+      </>
+    );
+  }
+
   return (
     <>
       <Toaster position="top-center" duration={2500} offset={16} />
       <div className="font-sans antialiased text-slate-900 min-h-[100dvh] bg-slate-50 selection:bg-slate-900/10">
-        {!user ? (
-          <ErrorBoundary>
-            <LoginScreen externalError={error} />
-          </ErrorBoundary>
-        ) : (
-          <ErrorBoundary>
-            <EngagementDashboard />
-          </ErrorBoundary>
-        )}
+        <ErrorBoundary>
+          <EngagementDashboard />
+        </ErrorBoundary>
       </div>
     </>
   );

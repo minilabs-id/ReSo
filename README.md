@@ -1,169 +1,104 @@
-# ReSo — Rekap Engagement Sosmed
+# ReSo — Rekap Engagement Sosmed (Desktop Offline)
 
-Aplikasi rekap engagement pegawai ke media sosial lembaga (Instagram, Facebook, TikTok), dirancang untuk berbagai instansi/organisasi, lengkap dengan ekstensi Chrome **ReSoEx** yang menarik nama komentator secara otomatis.
+Aplikasi **desktop Windows** untuk merekap engagement pegawai ke media sosial
+lembaga (Instagram, Facebook, TikTok). Berjalan **offline total**: tanpa login,
+tanpa Firebase, tanpa server. Seluruh data disimpan lokal di mesin operator.
 
-Dokumen acuan:
+Sumber kebenaran produk: [`specify.md`](./specify.md) (keputusan #10–#12:
+offline, SQLite lokal, scraping di aplikasi sendiri).
 
-- [`specify.md`](./specify.md) — tujuan & domain produk
-- [`constitution.md`](./constitution.md) — aturan pengembangan & deploy
-- [`WEB_AUDIT.md`](./WEB_AUDIT.md) — audit ketangguhan web (anti-hang, race, scroll)
-- [`EXTENSION_AUDIT.md`](./EXTENSION_AUDIT.md) — audit ekstensi ReSoEx
-- [`EFFICIENCY_AUDIT.md`](./EFFICIENCY_AUDIT.md) — audit efisiensi (bundle, render, Firestore)
+## Apa yang berubah dari versi web
 
-## Stack
+| Dulu (web) | Sekarang (desktop) |
+|------------|--------------------|
+| Login Google + Firestore multi-tenant | Tanpa login; satu instalasi = satu operator |
+| Data di `dinas/{uid}` (Firestore) | SQLite lokal di `app.getPath('userData')/reso.db` |
+| Ekstensi Chrome ReSoEx | Scraper bawaan (Chromium Electron + `WebContentsView`) |
+| Deploy Vercel + API Functions | Installer NSIS Windows (`ReSoSetup-<versi>.exe`) |
+| Token sesi Firebase | Tidak ada — pengaturan/token disimpan lokal |
 
-- React 19 + TypeScript + Vite + Tailwind
-- Firebase Auth (Google) + Firestore
-- Ekstensi Chrome MV3 (di `extension/`)
-- Deploy target: **Vercel free** (`rekapsosmed.vercel.app`)
+Direktori `api/`, `firestore.rules`, dan referensi Firebase lainnya adalah
+**arsip versi web** dan bukan bagian aplikasi desktop.
 
-## Multi-tenant (1 proyek, 1 DB, subtree per dinas)
+## Fitur utama
 
-- Proyek Firebase: **`reso-id`** — satu database `(default)` (Spark/gratis, tanpa billing).
-- Tiap akun Google terverifikasi yang login = 1 dinas = 1 subtree `dinas/{uid}`.
-- **Open registration**: siapa pun dengan akun Google bisa login; `/api/provision` memverifikasi token + menulis marker `dinas/{uid}/admins/{uid}`.
-- **Isolasi data**: `firestore.rules` membatasi akses hanya ke `dinas/{request.auth.uid}` (atau super-admin) — data tidak pernah bercampur antar dinas.
-- Ekstensi menulis via API → masuk ke `dinas/{uid}/...` dinas yang login.
-- Routing diambil dari **uid token yang diverifikasi** (bukan input client).
+- Master pegawai (CRUD, cari/urut, impor Excel/CSV, ekspor, template).
+- Input rekap harian: teks mentah IG/FB/TikTok + link, tarik data Meta API
+  (opsional), matching nama/handle (termasuk akun ke-2).
+- Ambil Nama: scraper in-app untuk TikTok/FB/IG (input manual TikTok tetap
+  didukung penuh).
+- Dashboard, laporan harian/mingguan/bulanan + ekspor PDF / gambar / Excel.
+- Pengaturan lokal: token Meta API, preferensi scraper, info versi & lokasi DB.
 
-## Menjalankan lokal
+## Menjalankan
 
-**Prasyarat:** Node.js 22+, Python 3.12 (untuk hitung extension ID).
+Prasyarat: **Node.js 22+** dan npm.
 
 ```bash
 npm install
-npm run dev
+npm run dev:desktop      # Electron + Vite (development)
 ```
 
-App: http://localhost:3000 (Vite dev server)
+Build & jalankan hasil build:
+
+```bash
+npm run build:desktop
+npm run start:desktop
+```
+
+Buat installer Windows (output di folder `release/`):
+
+```bash
+npm run dist:win
+```
+
+## Data lokal
+
+- Database: `%APPDATA%\reso\reso.db` (mengikuti `app.getPath('userData')`).
+- Preferensi scraper: `settings.json` di folder `userData` yang sama.
+- Semua akses data lewat IPC typed `window.reso` (preload `contextBridge`,
+  `contextIsolation` + `sandbox` aktif). Payload divalidasi di main process.
+- `better-sqlite3` v11.10 memakai prebuild khusus **Electron ABI 130**. Jalankan
+  `npm run rebuild:native` (terautomatik di `npm run dist:win`) untuk mengunduh
+  prebuild tersebut — tidak perlu Visual Studio.
+
+Export/import seluruh data tersedia lewat layar Pengaturan (backup/restore).
 
 ## Script
 
 | Command | Fungsi |
 |---------|--------|
-| `npm run dev` | Vite dev server |
-| `npm run build` | Build production ke `dist/` |
-| `npm run preview` | Preview build static |
-| `npm run lint` | Typecheck (`tsc --noEmit`) |
-| `npm test` | Semua test (matching, API, handoff, extension) |
-| `python scripts/compute_ext_id.py <key.pem>` | Hitung extension ID Chrome (a-p alphabet) |
-| `cd extension && npm run build` | Build ekstensi ke `extension/dist/` |
-| `cd extension && npm run zip` | Buat zip ekstensi |
+| `npm run dev:desktop` | Jalankan Electron mode dev |
+| `npm run build:desktop` | Build main/preload/renderer ke `out/` |
+| `npm run start:desktop` | Preview hasil build Electron |
+| `npm run dist:win` | Build + paket installer NSIS (`release/`) |
+| `npm run typecheck:desktop` | Typecheck main/preload (`electron/tsconfig.json`) |
+| `npm run lint` / `npm run build` | Typecheck / build web (pratinjau, bukan produk) |
+| `npm test` | Semua unit test (matching, DB lokal, API, network) |
 
-## Deploy Vercel (gratis)
-
-1. Hubungkan repo ke Vercel
-2. Framework: Vite · Output: `dist` (lihat `vercel.json`)
-3. Deploy — SPA rewrite + API Functions sudah dikonfigurasi
-
-> Tidak ada server Node/Express — semua API pakai Vercel Functions + Firestore REST.
-
-## Ekstensi Chrome (ReSoEx)
-
-- Menarik nama komentator dari **Facebook** (GraphQL + auto "Semua Komentar"), **TikTok**, **Instagram**.
-- Rekap+Kirim otomatis ke `/api/engagement` → masuk ke rekap dinas yang login.
-- Tidak butuh login sendiri: **reuse sesi web app** via push (`RESO_CONNECT`) & handoff (`reso:get-token`).
-- Token yang diterima ekstensi **hanya idToken** (~1 jam) — refresh token TIDAK pernah diberikan (mencegah logout diam-diam).
-
-### Distribusi
-
-- **Github Actions** (`extension-release.yml`) mem-pack otomatis setiap ada perubahan di `extension/`:
-  build → CRX + ZIP → hitung extension ID → GitHub Release → sync config.
-- **Download URL stabil**: `https://github.com/ngodingsendiri/ReSo/releases/latest/download/reso-extension.zip`
-- **Cara install (disarankan):** download `.zip` → ekstrak → `chrome://extensions` → **Developer mode** → **Load unpacked** → pilih folder. Extension ID stabil (`bilnegbhoaabgfchklhhfljcfgaheccp`) sehingga push/handoff berfungsi.
-- Opsi `.crx` drag-drop tetap ada, tapi sebagian versi Chrome menolak dengan `CRX_REQUIRED_PROOF_MISSING` → gunakan `.zip`.
-
-### Secret GitHub yang dibutuhkan
-
-| Secret | Isi |
-|--------|-----|
-| `EXTENSION_PRIVATE_KEY` | Isi `extension/dist-crx/reso-extension-key.pem` (RSA signing key — JANGAN di-commit) |
-
-## Alur Data
+## Arsitektur singkat
 
 ```
-Extension ReSoEx (Chrome MV3)
-  │
-  │ 1. Ekstrak nama komentator (FB/TikTok/IG)
-  │ 2. POST /api/engagement  (Bearer idToken)
-  ▼
-/api/engagement (Vercel Function)
-  │
-  │ 3. Verifikasi idToken → uid
-  │ 4. getFsBase(uid) → dinas/{uid}/dailyEngagement/{date}
-  │ 5. mergeUniqueLines + dedupe case-insensitive
-  │ 6. Hitung ulang engagedEmployeeIds
-  ▼
-Firestore → dinas/{uid}/dailyEngagement/{date}
-  │
-  │ 7. Dashboard baca via onSnapshot
-  ▼
-Dashboard (React + Firebase SDK)
-  │
-  │ 8. Tampilkan rekap, laporan harian/mingguan/bulanan
-  │ 9. Matching nama dengan master pegawai
-  ▼
-Export PDF (A4 multi-page) / Gambar (maks 60 pegawai, satu lembar) / Excel (per-hari)
-
---- Token Flow ---
-Web App login → push RESO_CONNECT (idToken) → extension
-  🡑 focus                      🡓 handoff bila expired
-  └─────────────── tab ReSo terbuka ──────────┘
+Renderer (React, src/)  ── window.reso (typed IPC) ──►  Main (electron/)
+Dashboard • Rekap • Laporan • Pegawai • Ambil Nama • Pengaturan
+                                                   • SQLite (repo data)
+                                                   • RunController + ScraperHost
+                                                   • electron-store (preferensi)
 ```
 
-## API (Vercel Functions)
+Struktur penting:
 
-| Endpoint | Fungsi |
-|----------|--------|
-| `POST /api/engagement` | Jalur tulis otomatis dari ekstensi — verifikasi token Firebase, merge nama ke `dinas/{uid}/dailyEngagement/{date}` (dedupe + hitung ulang `engagedEmployeeIds`). Idempoten. |
-| `POST /api/provision` | Bootstrap dinas — verifikasi token + tulis marker `dinas/{uid}/admins/{uid}` (open registration, tanpa service account). |
-| `GET /api/health` | Probe konektivitas untuk indikator "Terhubung" di ekstensi. |
-
-> **Tidak butuh env `GOOGLE_SERVICE_ACCOUNT`** — semua operasi memakai token operator (user yang terverifikasi), aturan Firestore yang menjamin isolasi per dinas.
-
-## Firestore
-
-- Satu sumber aturan: **`firestore.rules`** — scope `dinas/{uid}` (pemilik uid atau super-admin) + `users/{userId}` top-level.
-- Deploy rules ke `reso-id`:
-  ```bash
-  firebase login
-  firebase use reso-id
-  firebase deploy --only firestore:rules
-  ```
-
-## Model Data
-
-- **Per hari, bukan per postingan**: `dailyEngagement/{date}` menggabungkan SEMUA komentar dari semua post tanggal itu.
-- **Dedupe case-insensitive**: nama yang sama dari post berbeda tidak dobel.
-- **Idempoten**: kirim ulang = update (merge), bukan duplikat.
-- **Export gambar**: maksimal 60 pegawai (satu lembar). Untuk > 60 pegawai, tombol Gambar otomatis nonaktif, gunakan export PDF (A4 multi-page) atau Excel.
-- **Export Excel**: format per-hari (daily: Nama/NIP/Bidang/IG/FB/TT; mingguan/bulanan: kolom per tanggal + Total + %ENG).
-- **Notifikasi jam engagement dihapus** — tidak ada push reminder.
+- `src/components/LocalProvider.tsx` — pengganti `FirebaseProvider`, identitas
+  operator tetap (tanpa auth).
+- `src/lib/local-db.ts` — shim API Firestore-like di atas IPC (`window.reso.data`).
+- `electron/db/` — skema & repositori SQLite.
+- `electron/ipc/` — kontrak payload + validasi.
+- `electron/scrape/` — mesin scraping & state machine.
 
 ## Catatan
 
-- Mode pengembangan default: **penyempurnaan**, bukan rombak workflow (lihat constitution).
-- Logo di-hardcode sebagai SVG (`public/logo.svg`) — tidak ada fitur upload logo.
-- **Versi aplikasi** tampil di sidebar kiri ("ReSo vX.X.X") dan halaman Pengaturan. Versi dibaca dari `package.json` saat build — naikkan manual tiap rilis.
-- **Versi ekstensi** tampil di popup ("ReSo Ekstensi vX.X.X"). Versi dibaca dari `extension/manifest.json` (disinkron lewat `stamp-version.mjs` saat `npm run build`). Naikkan di `extension/package.json` **dan** `extension/manifest.json` bersamaan (test anti-drift menolak bila beda); GitHub Actions mem-pack dan merilis otomatis.
-
-### Rilis v1.0.58 — ringkasan besar
-
-- **Ketiga mesin (FB/IG/TT) berarsitektur 4 lapis**: synthetic-from-page → capture
-  replay → live ingest → DOM fallback; pagination penuh tanpa scroll manual.
-- **Akurasi thread besar**: ukuran halaman dinaikkan, guard idle lebih sabar,
-  budget balasan naik — rekap tidak lagi berhenti di 9–12 nama.
-- **Kejujuran hasil**: stopReason `incomplete` (partial) bila ujung thread tak
-  pernah terlihat + estimasi ±total komentar; pre-seed membuat "Proses lagi"
-  bersifat akumulatif.
-- **Personalisasi struktur**: FB multi-foto/reels/share; IG korsel satu-kontainer
-  + embed; TT video/foto/embed/share/live.
-- **Aksesibilitas & UX**: dialog semantik + focus trap di modal & panel ekstensi,
-  viewport zoom dibebaskan, popup/panel dirapikan flat-minimalis.
-
-### Rilis v1.0.59 — tuning & polish (2026-08-25)
-
-- **Performa**: window riwayat 92→120 hari (±4 bulan), Meta fetch concurrency 5→7, debounce matchPreview, cache logo, InputModal terpisah (−430 baris, render 2× lebih ringan).
-- **Build**: react-vendor 223KB terpisah — app chunk 411KB→205KB, caching stabil.
-- **Ekstensi**: auto-open dual sinyal FB, heartbeat DOM tiap 3 halaman, tooltip FAB “nama unik, bukan hitungan komentar”.
-- **UI**: Settings simetris tombol +, Dashboard Aktivitas Terakhir & Laporan pakai ReportControls bersama, flat minimalis konsisten.
+- Mode pengembangan: **penyempurnaan**, bukan rombak alur kerja operator.
+- Skor engagement: biner per platform per hari (IG + FB + TikTok, maks 3/hari).
+- Window operasional resmi Asia/Jakarta: reminder 14:45, batas rekap 15:00.
+- Versi aplikasi tampil di sidebar & Pengaturan; dibaca dari `package.json`
+  saat build — naikkan manual tiap rilis.

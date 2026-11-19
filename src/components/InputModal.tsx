@@ -1,16 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { RefreshCw, ChevronDown, X, Instagram, Facebook, ExternalLink } from 'lucide-react';
-import { setDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { setDoc, serverTimestamp, runTransaction, dinasDoc } from '../lib/local-db';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { toast } from 'sonner';
 import { TiktokIcon } from './icons/TiktokIcon';
 import { cn } from '@/lib/utils';
-import { useAuth } from './FirebaseProvider';
+import { useAuth } from './LocalProvider';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
-import { dinasDoc } from '../lib/firebase';
 import { parseLocalISODate, addLocalDays } from '../lib/date';
 import { matchEmployeesToEngagement, matchEngagementDetail, engagedIdsEqual, mergeUniqueLines } from '../lib/matching';
 import type { DailyEngagement, Employee, UnmatchedName } from '../types';
@@ -424,7 +423,7 @@ export function InputModal({
       await runTransaction(db, async (tx) => {
         // Baca snapshot terbaru untuk hindari last-write-wins dengan extension
         const snap = await tx.get(docRef);
-        const latest = snap.exists() ? (snap.data() as DailyEngagement) : undefined;
+        const latest = snap.exists() ? (snap.data() as unknown as DailyEngagement) : undefined;
         // Jika ekstensi baru saja menulis rawText untuk platform yang tidak kita ubah,
         // jangan timpa — merge dengan data terbaru untuk platform tersebut
         const merged: Record<string, unknown> = { ...updateData };

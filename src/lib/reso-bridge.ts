@@ -6,12 +6,6 @@
  * di sini HARUS tahan-absence (no-op), supaya `npm run build` web tetap aman.
  */
 
-export interface ResoSession {
-  idToken: string
-  uid: string
-  email: string | null
-}
-
 export interface ResoAppMeta {
   version: string
   platform: 'win32' | 'darwin' | 'linux'
@@ -106,19 +100,17 @@ interface ResoDataBridge {
   importAll: (
     payload: { employees: LocalEmployee[]; daily: LocalDaily[] }
   ) => Promise<{ ok: boolean; stats?: LocalDbStats; reason?: string }>
-}
-
-interface ResoAuthBridge {
-  setSession: (session: ResoSession) => Promise<{ ok: boolean }>
-  getSession: () => Promise<ResoSession | null>
-  clearSession: () => Promise<{ ok: boolean }>
+  /** Dokumen pengaturan tunggal (settings/{id}) — pengganti Firestore. */
+  listSettings?: () => Promise<string[]>
+  getSetting?: (key: string) => Promise<unknown>
+  setSetting?: (key: string, value: unknown) => Promise<{ ok: boolean; reason?: string }>
+  deleteSetting?: (key: string) => Promise<{ ok: boolean }>
 }
 
 declare global {
   interface Window {
     reso?: {
       platform: 'electron'
-      auth: ResoAuthBridge
       app: { getMeta: () => Promise<ResoAppMeta> }
       settings: ResoSettingsBridge
       data: ResoDataBridge
@@ -138,26 +130,6 @@ declare global {
 
 export const isElectron =
   typeof window !== 'undefined' && window.reso?.platform === 'electron'
-
-/** Simpan idToken (bukan refresh token) ke memori main process. No-op di web. */
-export async function syncSessionToMain(session: ResoSession): Promise<void> {
-  if (!isElectron) return
-  try {
-    await window.reso!.auth.setSession(session)
-  } catch (err) {
-    // Login renderer tidak boleh gagal gara-gara sinkronisasi main gagal.
-    console.warn('syncSessionToMain gagal:', err)
-  }
-}
-
-export async function clearSessionFromMain(): Promise<void> {
-  if (!isElectron) return
-  try {
-    await window.reso!.auth.clearSession()
-  } catch (err) {
-    console.warn('clearSessionFromMain gagal:', err)
-  }
-}
 
 // ===================== Pengaturan (M2 — JSON store) =====================
 

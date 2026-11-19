@@ -2,7 +2,7 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
-import { FirebaseProvider } from './components/FirebaseProvider';
+import { LocalProvider } from './components/LocalProvider';
 
 const rootEl = document.getElementById('root');
 if (!rootEl) {
@@ -11,8 +11,8 @@ if (!rootEl) {
 
 createRoot(rootEl).render(
   <StrictMode>
-    <FirebaseProvider>
+    <LocalProvider>
       <App />
-    </FirebaseProvider>
+    </LocalProvider>
   </StrictMode>,
 );

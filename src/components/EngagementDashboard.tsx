@@ -15,7 +15,6 @@ import {
   PieChart,
   CheckCircle2,
   Check,
-  LogOut,
   RefreshCw
 } from 'lucide-react';
 import { TiktokIcon } from './icons/TiktokIcon';
@@ -24,11 +23,10 @@ import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { toast } from 'sonner';
 import { DailyEngagement, Employee, UnmatchedName } from '../types';
-import { useAuth } from './FirebaseProvider';
+import { useAuth } from './LocalProvider';
 import { useAppLogo } from '../hooks/useAppLogo';
 import { useDialogA11y } from '../hooks/useDialogA11y';
-import { logout, dinasCollection, dinasDoc } from '../lib/firebase';
-import { onSnapshot, query, orderBy, setDoc, serverTimestamp, writeBatch, where, updateDoc, arrayUnion } from 'firebase/firestore';
+import { onSnapshot, query, orderBy, setDoc, serverTimestamp, writeBatch, where, updateDoc, arrayUnion, dinasCollection, dinasDoc } from '../lib/local-db';
 import { cn } from '@/lib/utils';
 import { getLocalISODate, parseLocalISODate } from '../lib/date';
 import { matchEmployeesToEngagement, matchEngagementDetail, engagedIdsEqual } from '../lib/matching';
@@ -113,7 +111,7 @@ export default function EngagementDashboard() {
       dinasDoc(db, user.uid, 'settings', 'meta_api'),
       (docSnap) => {
         if (docSnap.exists()) {
-          setMetaToken(docSnap.data().value || '');
+          setMetaToken(String(docSnap.data()?.value ?? ''));
         }
       },
       (err) => {
@@ -1425,37 +1423,13 @@ export default function EngagementDashboard() {
         </div>
 
         <div className="p-4 mt-auto border-t border-slate-200 bg-slate-50/80">
-          {user && (
-            <div className="flex items-center gap-3 mb-3">
-              {user.photoURL ? (
-                <img src={user.photoURL} alt="" className="w-9 h-9 rounded-full" referrerPolicy="no-referrer" />
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-slate-200 flex items-center justify-center text-slate-600 font-bold text-sm">
-                  {(user.email || '?').charAt(0).toUpperCase()}
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-slate-900 truncate">{user.displayName || user.email}</p>
-                <p className="text-[11px] text-slate-500 truncate">{user.email}</p>
-              </div>
-            </div>
-          )}
           <div className="flex items-center justify-between gap-2">
             <p className="text-[10px] font-medium text-slate-400">
               ReSo v{APP_VERSION}
             </p>
-            {user && (
-              <Button
-                onClick={logout}
-                variant="ghost"
-                size="icon"
-                title="Keluar"
-                aria-label="Keluar"
-                className="h-8 w-8 rounded-lg text-slate-500 hover:bg-rose-50 hover:text-rose-600"
-              >
-                <LogOut size={16} />
-              </Button>
-            )}
+            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+              Lokal
+            </span>
           </div>
         </div>
       </aside>

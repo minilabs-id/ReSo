@@ -4,8 +4,12 @@
  * Satu file di `userData/reso.db` — pengganti tunggal Firestore (#10).
  * Semua query disiapkan (prepared statement) dan berjalan sinkron; SQLite
  * lokal jauh lebih cepat dari IPC sehingga blocking kecil tidak masalah.
+ *
+ * Driver di-load lazily agar kegagalan native module (ABI mismatch / prebuild
+ * hilang) tidak menjatuhkan proses main saat startup — error muncul saat DB
+ * pertama kali dipakai.
  */
-import Database from 'better-sqlite3'
+import type BetterSqlite3 from 'better-sqlite3'
 import { app } from 'electron'
 import { join } from 'path'
 import {
@@ -21,17 +25,28 @@ import {
 } from './schema'
 import type { Employee, DailyEngagement } from '../../src/shared/types'
 
-let db: Database.Database | null = null
+let db: BetterSqlite3.Database | null = null
+let DatabaseCtor: typeof BetterSqlite3 | null = null
+
+function getDatabaseCtor(): typeof BetterSqlite3 {
+  if (DatabaseCtor) return DatabaseCtor
+  // Lazy require: jangan jatuhkan proses main saat startup jika native
+  // module (ABI Electron) belum tersedia — error muncul saat DB dipakai.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  DatabaseCtor = require('better-sqlite3') as typeof BetterSqlite3
+  return DatabaseCtor
+}
 
 function nowIso(): string {
   return new Date().toISOString()
 }
 
 /** Buka (sekali) + pastikan skema ada. Aman dipanggil berkali-kali. */
-export function openDb(): Database.Database {
+export function openDb(): BetterSqlite3.Database {
   if (db) return db
-  const path = join(app.getPath('userData'), 'reso.db')
-  const conn = new Database(path)
+  const Database = getDatabaseCtor()
+  const dbPath = join(app.getPath('userData'), 'reso.db')
+  const conn = new Database(dbPath)
   conn.pragma('journal_mode = WAL')
   conn.pragma('foreign_keys = ON')
   conn.exec(SCHEMA_SQL)

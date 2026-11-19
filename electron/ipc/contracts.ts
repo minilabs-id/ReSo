@@ -6,9 +6,6 @@
  */
 
 export const IPC = {
-  authSetSession: 'reso:auth:set-session',
-  authGetSession: 'reso:auth:get-session',
-  authClearSession: 'reso:auth:clear-session',
   appGetMeta: 'reso:app:get-meta',
   settingsGet: 'reso:settings:get',
   settingsSet: 'reso:settings:set',
@@ -29,19 +26,16 @@ export const IPC = {
   dbStats: 'reso:db:stats',
   dbExportAll: 'reso:db:export-all',
   dbImportAll: 'reso:db:import-all',
+  dbListSettings: 'reso:db:list-settings',
+  dbGetSetting: 'reso:db:get-setting',
+  dbSetSetting: 'reso:db:set-setting',
+  dbDeleteSetting: 'reso:db:delete-setting',
 } as const
 
 export { type Platform } from '../../src/shared/types'
 
 export function isPlatform(v: unknown): v is import('../../src/shared/types').Platform {
   return v === 'facebook' || v === 'tiktok' || v === 'instagram'
-}
-
-/** Sesi Firebase yang dikirim renderer → main. HANYA idToken (tanpa refresh token). */
-export interface ResoSession {
-  idToken: string
-  uid: string
-  email: string | null
 }
 
 export interface AppMeta {
@@ -147,15 +141,21 @@ export function parseDailyPatch(v: unknown): Partial<import('../../src/shared/ty
   return out as Partial<import('../../src/shared/types').DailyEngagement>
 }
 
-/** Validasi longgar tapi aman: hanya string non-kosong & email string/null. */
-export function parseResoSession(v: unknown): ResoSession | null {
-  if (!isRecord(v)) return null
-  const idToken = v.idToken
-  const uid = v.uid
-  const email = v.email
-  if (typeof idToken !== 'string' || !idToken.trim()) return null
-  if (idToken.length > 4096) return null
-  if (typeof uid !== 'string' || !uid.trim()) return null
-  if (typeof email !== 'string' && email !== null) return null
-  return { idToken, uid, email: email as string | null }
+/** Key pengaturan dokumen tunggal — UI memakai `social_links` & `meta_api`. */
+const SETTING_KEY_MAX = 128
+export function parseSettingKey(v: unknown): string | null {
+  const s = typeof v === 'string' ? v.trim() : ''
+  if (!s || s.length > SETTING_KEY_MAX) return null
+  return s
+}
+
+/** Nilai pengaturan: apa pun yang bisa diserialisasi JSON, ukuran dibatasi. */
+export function parseSettingValue(v: unknown): { ok: boolean; value?: unknown } {
+  try {
+    const text = JSON.stringify(v ?? null)
+    if (typeof text !== 'string' || text.length > 512 * 1024) return { ok: false }
+    return { ok: true, value: v ?? null }
+  } catch {
+    return { ok: false }
+  }
 }

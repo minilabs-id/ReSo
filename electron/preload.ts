@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { IPC, type ResoSession } from './ipc/contracts'
+import { IPC } from './ipc/contracts'
 import type { ResoSettings } from './store/settings-schema'
 import type { NameState, Platform } from '../src/shared/types'
 
@@ -9,12 +9,6 @@ import type { NameState, Platform } from '../src/shared/types'
  */
 const api = {
   platform: 'electron' as const,
-
-  auth: {
-    setSession: (session: ResoSession) => ipcRenderer.invoke(IPC.authSetSession, session),
-    getSession: (): Promise<ResoSession | null> => ipcRenderer.invoke(IPC.authGetSession),
-    clearSession: () => ipcRenderer.invoke(IPC.authClearSession),
-  },
 
   app: {
     getMeta: () => ipcRenderer.invoke(IPC.appGetMeta),
@@ -61,6 +55,11 @@ const api = {
     upsertDaily: (date: string, patch: unknown) =>
       ipcRenderer.invoke(IPC.dbUpsertDaily, date, patch),
     stats: () => ipcRenderer.invoke(IPC.dbStats),
+    listSettings: (): Promise<string[]> => ipcRenderer.invoke(IPC.dbListSettings),
+    getSetting: (key: string): Promise<unknown> => ipcRenderer.invoke(IPC.dbGetSetting, key),
+    setSetting: (key: string, value: unknown) =>
+      ipcRenderer.invoke(IPC.dbSetSetting, key, value),
+    deleteSetting: (key: string) => ipcRenderer.invoke(IPC.dbDeleteSetting, key),
     exportAll: () => ipcRenderer.invoke(IPC.dbExportAll),
     importAll: (payload: unknown) => ipcRenderer.invoke(IPC.dbImportAll, payload),
   },

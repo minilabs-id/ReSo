@@ -13,7 +13,6 @@ import {
   MatchableEmployee,
 } from './matching';
 import { buildEngagementPatch, isValidDateStr, isValidPostedAt, mergePostedAt, isDateTooFarFuture, dinasUid } from './engagement-api';
-import { createTokenHandoffHandler } from './token-handoff';
 
 const EMPLOYEES: MatchableEmployee[] = [
   { id: 'e1', name: 'Budi Santoso', fbName: 'Budi Santoso', igUsername: 'budi_s', tiktokName: '@budi_s', aliases: [] },
@@ -200,80 +199,4 @@ it('STRESS: isDateTooFarFuture — fuzz', () => {
     const r = isDateTooFarFuture(s, now);
     assert.equal(typeof r, 'boolean', 'return boolean: ' + s);
   }
-});
-
-// ===================== 6. token-handoff — edge case =====================
-
-it('STRESS: createTokenHandoffHandler — requestId null/invalid', () => {
-  const events: unknown[] = [];
-  const handler = createTokenHandoffHandler(
-    async () => ({ idToken: 'tok', uid: 'u', email: null }),
-    'https://reso.sekretariat.fun',
-    (ev) => events.push(ev),
-  );
-  // detail tanpa requestId → diabaikan (tidak dispatch, tidak crash)
-  handler(new CustomEvent('reso:get-token', { detail: {} }));
-  handler(new CustomEvent('reso:get-token', { detail: { requestId: 123 } }));
-  handler(new CustomEvent('reso:get-token', { detail: { requestId: '' } }));
-  assert.equal(events.length, 0, 'requestId invalid → tidak dispatch');
-});
-
-it('STRESS: createTokenHandoffHandler — origin beda → diabaikan', () => {
-  const events: unknown[] = [];
-  const handler = createTokenHandoffHandler(
-    async () => ({ idToken: 'tok', uid: 'u', email: null }),
-    'https://reso.sekretariat.fun',
-    (ev) => events.push(ev),
-  );
-  handler(new CustomEvent('reso:get-token', {
-    detail: { requestId: 'r1', origin: 'https://evil.example', respondTo: 'chan' },
-  }));
-  assert.equal(events.length, 0, 'origin lain → tidak dilayani');
-});
-
-it('STRESS: createTokenHandoffHandler — provider null → error no-user', async () => {
-  const events: CustomEvent[] = [];
-  const handler = createTokenHandoffHandler(
-    async () => null,
-    'https://reso.sekretariat.fun',
-    (ev) => events.push(ev),
-  );
-  handler(new CustomEvent('reso:get-token', {
-    detail: { requestId: 'r1', origin: 'https://reso.sekretariat.fun', respondTo: 'chan' },
-  }));
-  await new Promise((r) => setTimeout(r, 0));
-  assert.equal(events.length, 1, 'provider null → satu respons');
-  assert.equal((events[0].detail as { error?: string }).error, 'no-user');
-});
-
-it('STRESS: createTokenHandoffHandler — provider throw → error pesan', async () => {
-  const events: CustomEvent[] = [];
-  const handler = createTokenHandoffHandler(
-    async () => { throw new Error('boom'); },
-    'https://reso.sekretariat.fun',
-    (ev) => events.push(ev),
-  );
-  handler(new CustomEvent('reso:get-token', {
-    detail: { requestId: 'r2', origin: 'https://reso.sekretariat.fun', respondTo: 'chan' },
-  }));
-  await new Promise((r) => setTimeout(r, 0));
-  assert.equal(events.length, 1, 'provider throw → satu respons');
-  assert.equal((events[0].detail as { error?: string }).error, 'boom');
-});
-
-it('STRESS: createTokenHandoffHandler — guard sekali-pakai: duplikat diabaikan', async () => {
-  const events: CustomEvent[] = [];
-  const handler = createTokenHandoffHandler(
-    async () => ({ idToken: 'tok', uid: 'u', email: null }),
-    'https://reso.sekretariat.fun',
-    (ev) => events.push(ev),
-  );
-  handler(new CustomEvent('reso:get-token', {
-    detail: { requestId: 'dup', origin: 'https://reso.sekretariat.fun', respondTo: 'chan' },
-  }));
-  handler(new CustomEvent('reso:get-token', {
-    detail: { requestId: 'dup', origin: 'https://reso.sekretariat.fun', respondTo: 'chan' },
-  }));
-  await new Promise((r) => setTimeout(r, 0));
-  assert.equal(events.length, 1, 'requestId sama → dibalas sekali');
 });

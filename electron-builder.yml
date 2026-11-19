@@ -8,12 +8,22 @@ files:
   - package.json
   - assets/**/*
 asar: true
+# Native sudah di-rebuild lebih dulu oleh `npm run rebuild:native` memakai
+# prebuild Electron ABI 130 (tanpa Visual Studio), jadi electron-builder tidak
+# perlu meng-compile ulang.
+npmRebuild: false
+asarUnpack:
+  - node_modules/better-sqlite3/build/Release/**/*
 win:
+  # Lewati winCodeSign/rcedit: ekstraksinya butuh privilegi symlink yang tidak
+  # selalu tersedia di mesin dev. Tidak mengubah cara kerja aplikasi; ikon &
+  # metadata installer tetap diatur NSW oleh NSIS.
+  signAndEditExecutable: false
   target:
     - target: nsis
       arch:
         - x64
-  icon: assets/icons/icon128.png
+  icon: assets/icons/icon256.png
 nsis:
   oneClick: false
   perMachine: false

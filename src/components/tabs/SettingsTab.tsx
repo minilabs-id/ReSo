@@ -5,11 +5,10 @@ import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Card, CardContent } from '../ui/card';
 import { toast } from 'sonner';
-import { useAuth } from '../FirebaseProvider';
+import { useAuth } from '../LocalProvider';
 import { APP_VERSION } from '../../lib/version';
 import { useAppLogo } from '../../hooks/useAppLogo';
-import { getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { dinasDoc } from '../../lib/firebase';
+import { getDoc, setDoc, serverTimestamp, dinasDoc } from '../../lib/local-db';
 
 interface SettingsTabProps {
   recalculateConfig: { mode: 'last_day' | 'last_week' };

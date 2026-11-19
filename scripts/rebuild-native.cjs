@@ -1,5 +1,7 @@
 /**
  * Rebuild better-sqlite3 untuk ABI Electron (Windows, tanpa CLI yargs).
+ * better-sqlite3 v11.10 menyediakan prebuild Electron ABI 130, jadi ini
+ * mengunduh biner siap pakai — tidak butuh Visual Studio / node-gyp build.
  *
  * `npx electron-rebuild` GAGAL di repo ini: package.json bertipe "module"
  * sehingga CLI yargs-nya crash ("require is not defined in ES module scope").

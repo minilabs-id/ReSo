@@ -21,3 +21,6 @@ extension/
 # Artifak lokal sementara
 test-output.txt
 key.txt
+
+# State lokal agent/tooling
+.minicode/
