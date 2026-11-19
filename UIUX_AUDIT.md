@@ -1,4 +1,7 @@
-# UI/UX Audit – ReSo
+# UI/UX Audit – ReSo (arsip era web)
+
+> **Catatan:** dokumen ini mengaudit versi web/Firebase lama. Untuk aplikasi
+> desktop offline saat ini, lihat [`UIUX_AUDIT_DESKTOP.md`](./UIUX_AUDIT_DESKTOP.md).
 
 **Tanggal:** 2026-08-24  
 **Lingkup:** Seluruh aplikasi (Web App + Ekstensi)  
