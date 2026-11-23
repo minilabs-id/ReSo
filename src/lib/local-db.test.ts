@@ -12,7 +12,6 @@ import {
   query,
   where,
   orderBy,
-  limit,
   onSnapshot,
   getDoc,
   getDocs,
@@ -75,8 +74,8 @@ function makeFakeBridge() {
     stats: async () => ({ employees: employees.size, days: daily.size, path: 'mem', schemaVersion: 1 }),
     exportAll: async () => ({ employees: [...employees.values()], daily: [...daily.values()] }),
     importAll: async () => ({ ok: true }),
-    listSettings: async () => ['social_links'],
-    getSetting: async (k: string) => (k === 'meta_api' ? { value: 'tok' } : null),
+    listSettings: async () => ['preferences'],
+    getSetting: async (k: string) => (k === 'preferences' ? { value: 'tok' } : null),
     setSetting: async () => {
       setSettingCalls++
       return { ok: true }
@@ -150,10 +149,6 @@ async function main(): Promise<void> {
   check('query where >= menyaring', qs.size === 3)
   check('query orderBy desc urut', qs.docs[0]?.id === '2026-01-05')
 
-  const qLimit = query(col, orderBy('date', 'asc'), limit(2))
-  const ql = await getDocs(qLimit)
-  check('query limit memotong hasil', ql.size === 2 && ql.docs[0]?.id === '2025-12-01')
-
   const qEq = query(collection(null, 'employees'), where('name', '==', 'Budi'))
   check('query where == cocok', (await getDocs(qEq)).size === 1)
 
@@ -208,9 +203,9 @@ async function main(): Promise<void> {
   await new Promise((r) => setTimeout(r, 10))
   check('unsubscribe menghentikan langganan', seen.length === before)
 
-  // --- onSnapshot dokumen tunggal (settings / meta_api) ---
+  // --- onSnapshot dokumen tunggal (settings / preferences) ---
   const docSnaps: Array<boolean> = []
-  const unsubDoc = onSnapshot(doc(null, 'settings', 'meta_api') as never, (s) => {
+  const unsubDoc = onSnapshot(doc(null, 'settings', 'preferences') as never, (s) => {
     docSnaps.push(s.exists())
   })
   await new Promise((r) => setTimeout(r, 10))

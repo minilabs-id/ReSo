@@ -7,7 +7,6 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
 import { cn } from '@/lib/utils';
 
@@ -49,19 +48,19 @@ export default function EngagementChart({ data }: { data: EngagementChartPoint[]
     <div ref={wrapRef} className="relative h-full min-h-[200px] w-full">
       {size.width > 0 && size.height > 0 && (
       <ResponsiveContainer width={size.width} height={size.height} minWidth={0}>
-        <BarChart data={data} margin={{ top: 10, right: 8, left: 0, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 10, right: 8, left: 8, bottom: 8 }}>
           <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
           <XAxis
             dataKey="name"
             axisLine={false}
             tickLine={false}
-            tick={{ fontSize: 10, fontWeight: 600, fill: '#64748b' }}
+            tick={{ fontSize: 11, fontWeight: 600, fill: '#64748b' }}
             dy={10}
           />
           <YAxis
             axisLine={false}
             tickLine={false}
-            tick={{ fontSize: 10, fontWeight: 600, fill: '#64748b' }}
+            tick={{ fontSize: 11, fontWeight: 600, fill: '#64748b' }}
             width={64}
             allowDecimals={false}
             tickFormatter={fmt}
@@ -70,7 +69,7 @@ export default function EngagementChart({ data }: { data: EngagementChartPoint[]
               angle: -90,
               position: 'insideLeft',
               offset: 6,
-              style: { fontSize: 10, fontWeight: 600, fill: '#64748b', textAnchor: 'middle' },
+              style: { fontSize: 11, fontWeight: 600, fill: '#64748b', textAnchor: 'middle' },
             }}
           />
           <Tooltip
@@ -84,11 +83,6 @@ export default function EngagementChart({ data }: { data: EngagementChartPoint[]
               fontSize: 12,
             }}
             formatter={(value, name) => [fmt(Number(value)), String(name ?? '')]}
-          />
-          <Legend
-            iconType="circle"
-            iconSize={8}
-            wrapperStyle={{ fontSize: 11, fontWeight: 600, color: '#64748b', paddingTop: 8 }}
           />
           <Bar dataKey="ig" name="Instagram" stackId="a" fill="#ec4899" barSize={32} />
           <Bar
@@ -111,7 +105,7 @@ export default function EngagementChart({ data }: { data: EngagementChartPoint[]
           "bg-white/80 backdrop-blur-[1px] rounded-xl"
         )}>
           <p className="text-sm font-semibold text-slate-500">Belum ada data 7 hari</p>
-          <p className="text-[11px] text-slate-400">Isi rekap untuk melihat tren interaksi</p>
+          <p className="text-[11px] text-slate-500">Isi rekap untuk melihat tren interaksi</p>
         </div>
       )}
     </div>

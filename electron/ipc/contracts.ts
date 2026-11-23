@@ -1,24 +1,21 @@
 /**
  * Kontrak IPC ReSo Native.
  *
- * Semua payload dari renderer DIVALIDASI di sini sebelum dipakai main process —
- * jangan pernah percaya bentuk objek yang datang lewat ipcRenderer.invoke/send.
+ * Sebagian besar payload renderer divalidasi di sini; khusus event state
+ * scraping divalidasi oleh `parseRunEvent` di src/shared/run-state.ts yang
+ * dipanggil RunController. Jangan pernah percaya objek dari renderer.
  */
 
 export const IPC = {
-  appGetMeta: 'reso:app:get-meta',
   settingsGet: 'reso:settings:get',
   settingsSet: 'reso:settings:set',
   settingsReset: 'reso:settings:reset',
-  scrapeGetState: 'reso:scrape:get-state',
   scrapeGetAll: 'reso:scrape:get-all',
-  scrapeReset: 'reso:scrape:reset',
-  scrapeClearNames: 'reso:scrape:clear-names',
   scrapeApplyEvent: 'reso:scrape:apply-event',
   scrapeStateChanged: 'reso:scrape:state-changed',
+  scrapeHandoff: 'reso:scrape:handoff',
   dbListEmployees: 'reso:db:list-employees',
   dbUpsertEmployee: 'reso:db:upsert-employee',
-  dbReplaceEmployees: 'reso:db:replace-employees',
   dbDeleteEmployee: 'reso:db:delete-employee',
   dbGetDaily: 'reso:db:get-daily',
   dbListDailyRange: 'reso:db:list-daily-range',
@@ -26,17 +23,15 @@ export const IPC = {
   dbStats: 'reso:db:stats',
   dbChanged: 'reso:db:changed',
   dbBatchSave: 'reso:db:batch-save',
-  metaStatus: 'reso:meta:status',
-  metaRequest: 'reso:meta:request',
   scrapeOpenBrowser: 'reso:scrape:open-browser',
   scrapeCloseBrowser: 'reso:scrape:close-browser',
   scrapeSetBounds: 'reso:scrape:set-bounds',
   scrapeNavigate: 'reso:scrape:navigate',
-  scrapeGetUrl: 'reso:scrape:get-url',
   scrapeBrowserBack: 'reso:scrape:browser-back',
   scrapeBrowserForward: 'reso:scrape:browser-forward',
   scrapeBrowserReload: 'reso:scrape:browser-reload',
   scrapeBrowserNavState: 'reso:scrape:browser-nav-state',
+  scrapeBrowserGetUrl: 'reso:scrape:browser-get-url',
   scrapeBrowserNavigated: 'reso:scrape:browser-navigated',
   scrapeBrowserLoading: 'reso:scrape:browser-loading',
   scrapClick: 'reso:scrap:click',
@@ -54,13 +49,7 @@ export function isPlatform(v: unknown): v is import('../../src/shared/types').Pl
   return v === 'facebook' || v === 'tiktok' || v === 'instagram'
 }
 
-export interface AppMeta {
-  version: string
-  platform: 'win32' | 'darwin' | 'linux'
-  electron: boolean
-}
-
-export function isRecord(v: unknown): v is Record<string, unknown> {
+function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null
 }
 
@@ -137,9 +126,6 @@ export function parseDailyPatch(v: unknown): Partial<import('../../src/shared/ty
     'igEngagedEmployeeIds',
     'fbEngagedEmployeeIds',
     'tiktokEngagedEmployeeIds',
-    'igLinks',
-    'fbLinks',
-    'tiktokLinks',
     'postedAt',
   ]) {
     if (key in v) out[key] = strArray(v[key])
@@ -157,7 +143,7 @@ export function parseDailyPatch(v: unknown): Partial<import('../../src/shared/ty
   return out as Partial<import('../../src/shared/types').DailyEngagement>
 }
 
-/** Key pengaturan dokumen tunggal — UI memakai `social_links` & `meta_api`. */
+/** Key pengaturan dokumen tunggal — UI memakai `social_links`. */
 const SETTING_KEY_MAX = 128
 export function parseSettingKey(v: unknown): string | null {
   const s = typeof v === 'string' ? v.trim() : ''
@@ -218,13 +204,4 @@ export function parseBrowserBounds(v: unknown): BrowserBounds | null {
   }
   if (out.width < 100 || out.height < 100) return null
   return out
-}
-
-/** Path relatif Graph API — tidak boleh mengandung kredensial di query. */
-export function parseMetaPath(v: unknown): string | null {
-  const s = typeof v === 'string' ? v.trim() : ''
-  if (!s.startsWith('/') || s.length > 512) return null
-  if (/access_token|input_token|appsecret/i.test(s)) return null
-  if (s.includes('..') || s.includes('\\')) return null
-  return s
 }

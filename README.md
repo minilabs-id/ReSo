@@ -15,7 +15,7 @@ offline, SQLite lokal, scraping di aplikasi sendiri).
 | Data di `dinas/{uid}` (Firestore) | SQLite lokal di `app.getPath('userData')/reso.db` |
 | Ekstensi Chrome ReSoEx | Scraper bawaan (Chromium Electron + `WebContentsView`) |
 | Deploy Vercel + API Functions | Installer NSIS Windows (`ReSoSetup-<versi>.exe`) |
-| Token sesi Firebase | Tidak ada — pengaturan/token disimpan lokal |
+| Token sesi Firebase | Tidak ada — aplikasi offline tanpa login |
 
 Direktori `api/`, `firestore.rules`, dan referensi Firebase lainnya adalah
 **arsip versi web** dan bukan bagian aplikasi desktop.
@@ -23,7 +23,7 @@ Direktori `api/`, `firestore.rules`, dan referensi Firebase lainnya adalah
 ## Fitur utama
 
 - Master pegawai (CRUD, cari/urut, impor Excel/CSV, ekspor, template).
-- Input rekap harian: teks mentah IG/FB/TikTok + link, tarik data Meta API
+- Input rekap harian: teks mentah IG/FB/TikTok + link, hasil dari browser internal
   (opsional), matching nama/handle (termasuk akun ke-2).
 - Ambil Nama: browser internal (Chromium Electron) untuk membuka postingan
   FB/IG/TikTok. Tiap halaman diberi tombol mengambang **Scrap** — klik setelah
@@ -31,7 +31,7 @@ Direktori `api/`, `firestore.rules`, dan referensi Firebase lainnya adalah
   Tombol **Proses halaman ini** tetap tersedia sebagai alternatif. Input manual
   TikTok juga tetap didukung penuh.
 - Dashboard, laporan harian/mingguan/bulanan + ekspor PDF / gambar / Excel.
-- Pengaturan lokal: token Meta API, preferensi scraper, info versi & lokasi DB.
+- Pengaturan lokal: preferensi scraper, cadangan/pulihkan data, info versi & lokasi DB.
 
 ## Menjalankan
 
@@ -82,7 +82,7 @@ Export/import seluruh data tersedia lewat layar Pengaturan (backup/restore).
 | `npm run build` | Typecheck + build Vite ke `dist/` — **pratinjau web**, bukan produk |
 | `npm run preview` | Preview hasil build Vite di `dist/` — **pratinjau web only** |
 | `npm run lint` | Typecheck via `tsc --noEmit` |
-| `npm run clean` | Saat ini **hanya** menghapus `dist/` (belum `out/`/`release/`; rencana akan diperluas maintainer) |
+| `npm run clean` | Menghapus `dist/`, `out/`, dan `release/` |
 
 ## Arsitektur singkat
 

@@ -31,76 +31,80 @@ export function doneMessage(
 
   if (reason === 'stopped') {
     return c
-      ? `Dihentikan — ${c} ${word}.${extra} Salin daftar nama; data tersimpan lokal.`
+      ? `Dihentikan — ${c} ${word}.${extra} Sudah masuk rekap harian.`
       : `Dihentikan — belum ada ${word}.${extra}`
   }
   if (reason === 'timeout') {
     return c
-      ? `Waktu habis — ${c} ${word} (mungkin belum semua).${extra} Salin daftar nama; data tersimpan lokal.`
+      ? `Waktu habis — ${c} ${word} (mungkin belum semua).${extra} Sudah masuk rekap harian.`
       : `Waktu habis — belum ada ${word}.${extra}`
   }
   if (reason === 'incomplete') {
     return c
-      ? `Belum tuntas — ${c} ${word} terkumpul, thread belum terlihat habis. Proses lagi untuk melengkapi.`
+      ? `Belum tuntas — ${c} ${word} terkumpul, thread belum terlihat habis. Klik Ambil nama lagi untuk melengkapi.`
       : `Belum ada ${word} — pagination belum tuntas.${extra}`
   }
   if (reason === 'idle' || reason === 'complete') {
-    if (c) return `Selesai — ${c} ${word}.${extra} Salin daftar nama; data tersimpan lokal.`
+    if (c) return `Selesai — ${c} ${word}.${extra} Sudah masuk rekap harian.`
     if (tip) return `Tidak ada ${word}.${tip}`
     if (platform === 'facebook')
-      return 'Tidak ada nama. Buka permalink post, buka list komentar sampai terlihat, tunggu 2–3 dtk, lalu Proses lagi.'
+      return 'Tidak ada nama. Buka permalink post, buka list komentar sampai terlihat, tunggu 2–3 dtk, lalu klik Ambil nama lagi.'
     if (platform === 'tiktok')
-      return 'Tidak ada nama. Pastikan komentar terbuka di video, lalu Proses lagi.'
-    return 'Tidak ada username. Pastikan komentar terbuka & sudah login, lalu Proses lagi.'
+      return 'Tidak ada nama. Pastikan komentar terbuka di video, lalu klik Ambil nama lagi.'
+    return 'Tidak ada username. Pastikan komentar terbuka & sudah login, lalu klik Ambil nama lagi.'
   }
   if (reason === 'error') {
-    return extra.trim() || 'Terjadi error saat ekstrak.'
+    const base = extra.trim() || 'Terjadi error saat ekstrak.'
+    return c ? `${base} ${c} ${word} tetap masuk rekap harian.` : base
   }
   if (reason === 'rate_limit') {
     const who =
       platform === 'facebook' ? 'Facebook' : platform === 'tiktok' ? 'TikTok' : 'Instagram'
     return c
-      ? `Rate limit ${who} (429) — ${c} ${word} terkumpul. Tunggu beberapa saat, lalu Proses lagi.`
+      ? `Rate limit ${who} (429) — ${c} ${word} terkumpul. Tunggu beberapa saat, lalu klik Ambil nama lagi.`
       : `Rate limit ${who} (429) — tunggu beberapa saat, lalu coba lagi.`
   }
   if (reason === 'blocked') {
+    const who = platform === 'facebook' ? 'Facebook' : platform === 'tiktok' ? 'TikTok' : 'Instagram'
     return c
-      ? `Instagram memblokir permintaan (403) — kemungkinan anti-bot. ${c} username terkumpul. Tunggu beberapa saat, lalu Proses lagi.`
-      : 'Instagram memblokir permintaan (403) — kemungkinan anti-bot atau App-ID ditolak. Berhenti agar akun aman; coba lagi beberapa saat kemudian.'
+      ? `${who} memblokir permintaan (403) — kemungkinan anti-bot. ${c} ${word} terkumpul. Tunggu beberapa saat, lalu klik Ambil nama lagi.`
+      : `${who} memblokir permintaan (403) — kemungkinan anti-bot. Berhenti agar akun aman; coba lagi beberapa saat kemudian.`
   }
   if (reason === 'checkpoint') {
+    const who = platform === 'facebook' ? 'Facebook' : platform === 'tiktok' ? 'TikTok' : 'Instagram'
+    const host = platform === 'facebook' ? 'facebook.com' : platform === 'tiktok' ? 'tiktok.com' : 'instagram.com'
     return c
-      ? `Instagram minta verifikasi (checkpoint). ${c} username terkumpul — buka instagram.com, selesaikan verifikasi, lalu Proses lagi.`
-      : 'Instagram minta verifikasi (checkpoint). Buka instagram.com, selesaikan verifikasi, lalu Proses lagi.'
+      ? `${who} minta verifikasi (checkpoint). ${c} ${word} terkumpul — buka ${host}, selesaikan verifikasi, lalu klik Ambil nama lagi.`
+      : `${who} minta verifikasi (checkpoint). Buka ${host}, selesaikan verifikasi, lalu klik Ambil nama lagi.`
   }
   if (reason === 'no_template') {
     if (platform === 'instagram') {
-      return 'Belum ada template API komentar. Buka post/reel, klik ikon komentar dulu, tunggu list muncul, lalu Proses lagi (wajib login).'
+      return 'Panel komentar belum terbuka. Buka post/reel, klik ikon komentar, tunggu daftar muncul, lalu klik Ambil nama lagi (wajib login).'
     }
     if (platform === 'facebook') {
-      return 'Belum ada template GraphQL komentar. Buka permalink post, buka list komentar sampai terlihat, tunggu 2–3 detik, lalu Proses lagi.'
+      return 'Panel komentar belum terbuka. Buka permalink post, buka daftar komentar sampai terlihat, tunggu 2–3 detik, lalu klik Ambil nama lagi.'
     }
-    return 'Belum ada template API komentar. Buka video, klik ikon komentar dulu, tunggu komentar muncul, lalu Proses lagi.'
+    return 'Panel komentar belum terbuka. Buka video, klik ikon komentar, tunggu komentar muncul, lalu klik Ambil nama lagi.'
   }
   if (reason === 'no_video') {
     return 'Buka halaman video TikTok dulu (URL berisi /video/...), bukan For You feed saja.'
   }
   if (reason === 'no_login') {
     if (platform === 'facebook')
-      return 'Sesi Facebook tidak aktif — login di facebook.com lalu Proses lagi.'
-    if (platform === 'tiktok') return 'Sesi TikTok tidak aktif — login di tiktok.com lalu Proses lagi.'
-    return 'Butuh login Instagram. Buka instagram.com, login, lalu buka post & Proses lagi.'
+      return 'Sesi Facebook tidak aktif — login di facebook.com lalu klik Ambil nama lagi.'
+    if (platform === 'tiktok') return 'Sesi TikTok tidak aktif — login di tiktok.com lalu klik Ambil nama lagi.'
+    return 'Butuh login Instagram. Buka instagram.com, login, lalu buka post, lalu klik Ambil nama lagi.'
   }
   if (reason === 'no_media') {
     return 'Buka halaman post/reel Instagram dulu (URL /p/... atau /reel/...).'
   }
   if (reason === 'live') {
-    return 'Siaran LIVE TikTok tidak memiliki kolom komentar permanen — buka salah satu video/foto, lalu Proses lagi.'
+    return 'Siaran LIVE TikTok tidak memiliki kolom komentar permanen — buka salah satu video/foto, lalu klik Ambil nama lagi.'
   }
   if (reason === 'synthetic_failed') {
     return c
-      ? `Belum tuntas — ${c} ${word} terkumpul, endpoint synthetic gagal. Proses lagi untuk melengkapi.`
-      : 'Endpoint komentar gagal dibuat — buka panel komentar sampai terlihat, tunggu 2–3 dtk, lalu Proses lagi.'
+      ? `Belum tuntas — ${c} ${word} terkumpul, endpoint synthetic gagal. Klik Ambil nama lagi untuk melengkapi.`
+      : 'Endpoint komentar gagal dibuat — buka panel komentar sampai terlihat, tunggu 2–3 dtk, lalu klik Ambil nama lagi.'
   }
   return c ? `${c} ${word}` : 'Siap.'
 }

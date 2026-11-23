@@ -1,17 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Loader2 } from 'lucide-react';
+import { Bookmark, Loader2 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Input } from '../ui/input';
-import { ConfirmDialog } from '../ui/confirm-dialog';
 import {
   isElectron,
-  getDaily,
-  upsertDaily,
   getScrapeStates,
   onScrapeStateChanged,
   applyScrapeEvent,
-  clearScrapeNames,
   openScrapeBrowser,
   closeScrapeBrowser,
   setScrapeBrowserBounds,
@@ -20,22 +16,22 @@ import {
   browserForward,
   browserReload,
   getBrowserNavState,
+  getScrapeBrowserUrl,
+  getSettings,
+  updateSettings,
   onBrowserNavigated,
   onBrowserLoading,
+  onScrapeHandoff,
   type NameState,
+  type ResoSettings,
+  type ScrapeHandoffPayload,
 } from '../../lib/reso-bridge';
-import { filterNames, sortNamesAz, namesToClipboardText } from '../../shared/normalize';
+import { toast } from '../../lib/notify';
 import { newRunId } from '../../shared/state';
+import { isAllowedScrapeUrl, plausibleScrapeTarget } from '../../shared/platform';
 import { wordFor, fbTargetLabel, igTargetLabel } from '../../shared/messages';
 import type { Platform } from '../../shared/types';
-import { getLocalISODate } from '../../lib/date';
-import { toast } from 'sonner';
-
-const PLATFORM_LABEL: Record<Platform, string> = {
-  facebook: 'Facebook',
-  tiktok: 'TikTok',
-  instagram: 'Instagram',
-};
+import { PLATFORM_LABEL_FULL } from '../shared/platformLabels';
 
 const DEFAULT_URL: Record<Platform, string> = {
   facebook: 'https://www.facebook.com/',
@@ -43,16 +39,19 @@ const DEFAULT_URL: Record<Platform, string> = {
   instagram: 'https://www.instagram.com/',
 };
 
-/** Id banner fallback web — jadi penjelasan aria untuk tombol yang dinonaktifkan. */
-const WEB_HELP_ID = 'scraper-web-fallback';
+/** Kunci preferensi halaman awal per platform (profil/postingan operator). */
+const HOME_KEY: Record<Platform, keyof ResoSettings> = {
+  facebook: 'homeUrlFacebook',
+  instagram: 'homeUrlInstagram',
+  tiktok: 'homeUrlTiktok',
+};
 
-/** Tombol yang mati karena bukan Electron diberi petunjuk yang bisa dibaca screen reader. */
-const webDisabledProps = !isElectron
-  ? {
-      title: 'Hanya tersedia di ReSo Desktop. Lihat pemberitahuan web di atas.',
-      'aria-describedby': WEB_HELP_ID,
-    }
-  : {};
+/** Platform terakhir dipertahankan saat panel di-unmount (pindah menu). */
+let lastSelectedPlatform: Platform = 'tiktok';
+
+interface ScraperPanelProps {
+  onOpenCalendar?: () => void;
+}
 
 type CalloutTone = 'rose' | 'amber' | 'green' | 'slate';
 
@@ -78,7 +77,6 @@ const EMPTY_STATE: NameState = {
   updatedAt: 0,
   stopReason: null,
   includeReplies: false,
-  hasTemplate: false,
   runId: null,
   postHint: '',
   videoHint: '',
@@ -91,25 +89,16 @@ const EMPTY_STATE: NameState = {
  * State pemilik adalah MAIN PROCESS; komponen ini hanya mengirim event &
  * merender state yang disiarkan (`scrape.stateChanged`).
  */
-export default function ScraperPanel({
-  onOpenRekap,
-}: {
-  /** Dipanggil setelah hasil dimasukkan ke rekap agar modal input langsung terbuka. */
-  onOpenRekap?: () => void;
-} = {}) {
-  const [platform, setPlatform] = useState<Platform>('tiktok');
+export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
+  const [platform, setPlatform] = useState<Platform>(lastSelectedPlatform);
+  const [lastHandoff, setLastHandoff] = useState<ScrapeHandoffPayload | null>(null);
   const [states, setStates] = useState<Record<Platform, NameState>>({
     facebook: EMPTY_STATE,
     tiktok: EMPTY_STATE,
     instagram: EMPTY_STATE,
   });
-  const [query, setQuery] = useState('');
-  const [az, setAz] = useState(false);
-  const [copiedKind, setCopiedKind] = useState<'filter' | 'all' | null>(null);
-  const [confirmClear, setConfirmClear] = useState(false);
-  const [clearing, setClearing] = useState(false);
-  /** null = ikuti nilai state main; entri = pilihan operator per platform. */
-  const [repliesOverride, setRepliesOverride] = useState<Partial<Record<Platform, boolean>>>({});
+  /** Naik setiap ada broadcast — dipakai menolak hasil `getAll` yang basi. */
+  const generationRef = useRef(0);
 
   // Browser internal: posisi WebContentsView mengikuti kotak ini.
   const browserRef = useRef<HTMLDivElement | null>(null);
@@ -122,22 +111,26 @@ export default function ScraperPanel({
   useEffect(() => {
     if (!isElectron) return;
     let cancelled = false;
-    void getScrapeStates().then((all) => {
-      if (cancelled || !all) return;
-      setStates((prev) => ({ ...prev, ...(all as Record<Platform, NameState>) }));
-    });
+
+    // Siaran dipasang DULUAN. Setiap broadcast menaikkan generation; sebuah
+    // `getAll` yang dikirim sebelum broadcast tetapi selesai sesudahnya harus
+    // dibuang — kalau tidak, state bisa mundur (done → running, count turun).
     const off = onScrapeStateChanged(({ platform: p, state }) => {
       if (cancelled) return;
+      generationRef.current += 1;
       setStates((prev) => ({ ...prev, [p as Platform]: state }));
     });
-    // Jaring pengaman: siaran dari engine kadang tidak sampai ke renderer
-    // (mis. run selesai saat panel sedang diremount). Poll state main berkala.
-    const poll = setInterval(() => {
-      if (cancelled) return;
+
+    const fetchAll = () => {
+      const generation = generationRef.current;
       void getScrapeStates().then((all) => {
-        if (!cancelled && all) setStates((prev) => ({ ...prev, ...(all as Record<Platform, NameState>) }));
+        if (cancelled || !all || generation !== generationRef.current) return;
+        setStates((prev) => ({ ...prev, ...(all as Record<Platform, NameState>) }));
       });
-    }, 1500);
+    };
+    fetchAll();
+    // Jaring pengaman bila siaran tidak sampai saat panel di-remount.
+    const poll = setInterval(fetchAll, 4000);
     return () => {
       cancelled = true;
       clearInterval(poll);
@@ -145,10 +138,15 @@ export default function ScraperPanel({
     };
   }, []);
 
+  // Ringkasan handoff ditampilkan di panel — toast global cepat hilang.
+  useEffect(() => onScrapeHandoff(setLastHandoff), []);
+
   /** Pasang browser view terlihat pada kotak yang diberikan, ikuti ukuran/scroll. */
   useEffect(() => {
     if (!isElectron) return;
+    lastSelectedPlatform = platform;
     let raf = 0;
+    let cancelled = false;
     const bounds = () => {
       const el = browserRef.current;
       if (!el) return null;
@@ -157,11 +155,36 @@ export default function ScraperPanel({
     };
     void (async () => {
       const b = bounds();
-      if (!b) return;
-      await openScrapeBrowser(platform, b);
+      if (!b || cancelled) return;
+      const opened = await openScrapeBrowser(platform, b);
+      if (cancelled) return;
+      if (!opened) {
+        // Layout belum siap (bounds terlalu kecil) — coba sekali lagi setelah
+        // frame berikutnya, bukan diam-diam melanjutkan dengan view tertutup.
+        await new Promise((r) => requestAnimationFrame(r));
+        if (cancelled || !(await openScrapeBrowser(platform, bounds() ?? b))) {
+          if (!cancelled) setBrowserError('Browser internal gagal dibuka — coba ganti platform.');
+          return;
+        }
+      }
       lastBoundsRef.current = '';
-      await navigateScrapeBrowser(platform, DEFAULT_URL[platform]);
-      setBrowserUrl(DEFAULT_URL[platform]);
+      // Pulihkan halaman yang sedang terbuka di host. Bila host belum punya
+      // halaman, pakai halaman awal yang disimpan operator (profil/postingan
+      // sendiri), baru jatuh ke homepage platform.
+      const current = await getScrapeBrowserUrl(platform);
+      const shouldKeep = isAllowedScrapeUrl(current, platform);
+      let target = shouldKeep ? current : DEFAULT_URL[platform];
+      if (!shouldKeep) {
+        const settings = await getSettings();
+        const preferred = settings?.[HOME_KEY[platform]] as string | undefined;
+        if (typeof preferred === 'string' && isAllowedScrapeUrl(preferred, platform)) {
+          target = preferred;
+        }
+        await navigateScrapeBrowser(platform, target);
+      }
+      if (!shouldKeep) await navigateScrapeBrowser(platform, target);
+      if (cancelled) return;
+      setBrowserUrl(target);
       setBrowserError('');
       setNavState(await getBrowserNavState(platform));
     })();
@@ -183,10 +206,10 @@ export default function ScraperPanel({
       lastBoundsRef.current = key;
       void setScrapeBrowserBounds(b);
     };
-    // Throttle ~100ms supaya tidak membanjiri IPC saat scroll halus.
+    // Throttle 250 ms — siaran navigasi sudah langsung; ini hanya pengaman.
     let lastSync = 0;
     const loop = (t: number) => {
-      if (t - lastSync > 100) {
+      if (t - lastSync > 250) {
         lastSync = t;
         sync();
       }
@@ -197,6 +220,7 @@ export default function ScraperPanel({
     window.addEventListener('resize', sync);
 
     return () => {
+      cancelled = true;
       cancelAnimationFrame(raf);
       window.removeEventListener('scroll', sync, true);
       window.removeEventListener('resize', sync);
@@ -219,20 +243,29 @@ export default function ScraperPanel({
     }
   }, [platform]);
 
-  const state = states[platform];
-  const includeReplies = repliesOverride[platform] ?? state.includeReplies;
-  const visible = useMemo(() => {
-    const base = filterNames(state.names, query);
-    return az ? sortNamesAz(base) : base;
-  }, [state.names, query, az]);
+  /** Simpan halaman yang sedang terbuka sebagai halaman awal platform ini. */
+  const saveHome = useCallback(async () => {
+    if (!isElectron || !isAllowedScrapeUrl(browserUrl, platform)) return;
+    const saved = await updateSettings({ [HOME_KEY[platform]]: browserUrl } as Partial<ResoSettings>);
+    if (saved) toast.success(`Halaman awal ${PLATFORM_LABEL_FULL[platform]} disimpan`);
+  }, [browserUrl, platform]);
 
-  const filterActive = query.trim() !== '' || az;
+  const state = states[platform];
+  // Satu sumber kebenaran: state main. Checkbox mengirim SET_OPTIONS ke main,
+  // sehingga tombol Scrap di halaman memakai opsi yang sama dengan UI.
+  const includeReplies = state.includeReplies;
+  const running = state.status === 'running';
+  /** State dari sesi sebelumnya tidak boleh tampil seolah hasil baru. */
+  const isStale =
+    state.updatedAt > 0 &&
+    new Date(state.updatedAt).toDateString() !== new Date().toDateString();
+  const shownMessage = browserError || (isStale ? 'Siap.' : state.message);
 
   /** Warna callout mengikuti keparahan pesan, bukan sekadar status. */
   const tone = useMemo<CalloutTone>(() => {
     const reason = state.stopReason ?? '';
-    const msg = state.message.toLowerCase();
-    if (state.status === 'error' || reason === 'error') return 'rose';
+    const msg = shownMessage.toLowerCase();
+    if (browserError || state.status === 'error' || reason === 'error') return 'rose';
     if (
       reason === 'checkpoint' ||
       reason === 'rate_limit' ||
@@ -243,15 +276,18 @@ export default function ScraperPanel({
     }
     if (state.status === 'done') return 'green';
     return 'slate';
-  }, [state.status, state.stopReason, state.message]);
+  }, [state.status, state.stopReason, shownMessage, browserError]);
 
   /** Label target memakai helper agar token internal engine tidak tampil mentah. */
   const targetLabel = useMemo(() => {
+    if (isStale) return '';
     if (platform === 'facebook') return fbTargetLabel(state.postHint);
     if (platform === 'instagram') return igTargetLabel(state.postHint);
-    // TikTok belum punya helper khusus — pakai filter token generik yang sama.
     return fbTargetLabel(state.videoHint);
-  }, [platform, state.postHint, state.videoHint]);
+  }, [platform, state.postHint, state.videoHint, isStale]);
+
+  /** Preflight: tombol menyala hanya bila halaman memang bisa dipanen. */
+  const canScrape = plausibleScrapeTarget(browserUrl, platform);
 
   const start = useCallback(async () => {
     if (!isElectron) return;
@@ -267,86 +303,6 @@ export default function ScraperPanel({
     await applyScrapeEvent(platform, { type: 'STOP' });
   }, [platform]);
 
-  const clear = useCallback(async () => {
-    if (!isElectron) return;
-    setClearing(true);
-    try {
-      await clearScrapeNames(platform);
-    } finally {
-      setClearing(false);
-    }
-  }, [platform]);
-
-  const flashCopied = useCallback((kind: 'filter' | 'all') => {
-    setCopiedKind(kind);
-    setTimeout(() => setCopiedKind(null), 1500);
-  }, []);
-
-  const copyVisible = useCallback(async () => {
-    const text = namesToClipboardText(visible, platform);
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      flashCopied('filter');
-    } catch {
-      setCopiedKind(null);
-    }
-  }, [visible, platform, flashCopied]);
-
-  const copyAll = useCallback(async () => {
-    const text = namesToClipboardText(state.names, platform);
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      flashCopied('all');
-    } catch {
-      setCopiedKind(null);
-    }
-  }, [state.names, platform, flashCopied]);
-
-  /** Masukkan nama hasil scrap ke raw text rekap hari ini — tanpa paste manual. */
-  const sendToRekap = useCallback(async () => {
-    if (!isElectron) return;
-    // Ambil ulang state terbaru dari main — UI bisa tertinggal bila panel
-    // sempat diremount saat scraping berjalan.
-    const fresh = await getScrapeStates();
-    // Cari platform yang benar-benar punya hasil, jangan percaya state tab UI
-    // yang bisa tertinggal saat panel di-remount.
-    const populated = Object.entries(fresh ?? {}).find(([, s]) => s.names.length > 0);
-    const targetPlatform: Platform = (populated?.[0] as Platform) ?? platform;
-    const names = populated?.[1].names ?? state.names;
-    if (names.length === 0) {
-      toast.error('Belum ada hasil scrap untuk platform ini.');
-      return;
-    }
-    const date = getLocalISODate(new Date());
-    const field: 'igRawText' | 'fbRawText' | 'tiktokRawText' =
-      targetPlatform === 'instagram' ? 'igRawText' : targetPlatform === 'facebook' ? 'fbRawText' : 'tiktokRawText';
-    try {
-      const existing = await getDaily(date);
-      const prev = String(existing?.[field] ?? '')
-        .split(/\r?\n/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      const seen = new Set(prev.map((s) => s.toLowerCase()));
-      const merged = [...prev];
-      for (const name of names) {
-        const clean = name.trim();
-        if (!clean || seen.has(clean.toLowerCase())) continue;
-        seen.add(clean.toLowerCase());
-        merged.push(clean);
-      }
-      const saved = await upsertDaily(date, { [field]: merged.join('\n') });
-      if (!saved) throw new Error('Gagal menulis rekap');
-      toast.success(`${merged.length - prev.length} ${wordFor(targetPlatform)} masuk rekap ${date}`);
-      onOpenRekap?.();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Gagal memasukkan hasil ke rekap');
-    }
-  }, [state.names, platform, onOpenRekap]);
-
-  const running = state.status === 'running';
-
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl">
       <div>
@@ -356,39 +312,29 @@ export default function ScraperPanel({
         </p>
       </div>
 
-      {!isElectron && (
-        <Card id={WEB_HELP_ID} className="p-4 border-amber-200 bg-amber-50">
-          <p className="text-[11px] text-amber-800 font-medium leading-relaxed">
-            Fitur ini hanya aktif di aplikasi <strong>ReSo Desktop</strong>. Versi web tetap bisa
-            memakai input rekap manual.
-          </p>
-        </Card>
-      )}
-
       <div className="flex flex-wrap gap-2" role="group" aria-label="Pilih platform">
-        {(Object.keys(PLATFORM_LABEL) as Platform[]).map((p) => (
+        {(Object.keys(PLATFORM_LABEL_FULL) as Platform[]).map((p) => (
           <Button
             key={p}
             variant={p === platform ? 'default' : 'outline'}
             size="sm"
             onClick={() => setPlatform(p)}
+            aria-pressed={p === platform}
           >
-            {PLATFORM_LABEL[p]}
-            {states[p].count > 0 && (
-              <span className="ml-2 text-[11px] font-bold opacity-70">{states[p].count}</span>
-            )}
+            {PLATFORM_LABEL_FULL[p]}
           </Button>
         ))}
       </div>
 
-      {/* Browser internal: buka postingan di sini, lalu klik tombol "Scrap" di halaman. */}
       <Card className="p-4 sm:p-5 space-y-3">
+        {/* Toolbar: navigasi browser + alamat. Pintasan platform dihapus —
+            pemilih platform di atas sudah satu-satunya tempat berganti platform. */}
         <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             size="icon-sm"
             onClick={() => void browserBack(platform)}
-            disabled={!isElectron || !navState.canBack}
+            disabled={!navState.canBack}
             aria-label="Kembali"
             title="Kembali"
           >
@@ -398,7 +344,7 @@ export default function ScraperPanel({
             variant="outline"
             size="icon-sm"
             onClick={() => void browserForward(platform)}
-            disabled={!isElectron || !navState.canForward}
+            disabled={!navState.canForward}
             aria-label="Maju"
             title="Maju"
           >
@@ -408,7 +354,6 @@ export default function ScraperPanel({
             variant="outline"
             size="icon-sm"
             onClick={() => void browserReload(platform)}
-            disabled={!isElectron}
             aria-label="Muat ulang"
             title="Muat ulang"
           >
@@ -423,182 +368,127 @@ export default function ScraperPanel({
             placeholder="https://... buka postingan FB/IG/TikTok"
             aria-label="Alamat postingan"
             className="h-9 flex-1 min-w-[220px] text-[11px]"
-            disabled={!isElectron}
           />
-          <Button size="sm" onClick={() => void openUrl(browserUrl)} disabled={!isElectron}>
+          <Button size="sm" onClick={() => void openUrl(browserUrl)}>
             Buka
           </Button>
-          {(Object.keys(PLATFORM_LABEL) as Platform[]).map((p) => (
-            <Button
-              key={p}
-              variant="ghost"
-              size="sm"
-              onClick={() => void openUrl(DEFAULT_URL[p])}
-              disabled={!isElectron}
-              title={`Buka beranda ${PLATFORM_LABEL[p]}`}
-            >
-              {p === 'facebook' ? 'FB' : p === 'instagram' ? 'IG' : 'TT'}
-            </Button>
-          ))}
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => void saveHome()}
+            disabled={!isAllowedScrapeUrl(browserUrl, platform)}
+            aria-label="Jadikan halaman awal"
+            title="Jadikan halaman ini sebagai halaman awal saat membuka platform"
+          >
+            <Bookmark size={14} />
+          </Button>
         </div>
-        {browserError && <p className="text-[11px] font-medium text-rose-600">{browserError}</p>}
-        <div className="flex flex-wrap items-center gap-2 text-[11px] font-semibold text-slate-500">
-          <span className="rounded-full bg-slate-100 px-2 py-0.5">
-            {PLATFORM_LABEL[platform]} · balasan {includeReplies ? 'ya' : 'tidak'}
-          </span>
-          {platform !== 'tiktok' && (
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">
-              Ekstraksi FB/IG berbasis tampilan — pastikan komentar terbuka & sudah login
-            </span>
-          )}
-          {browserLoading && (
-            <span className="flex items-center gap-1.5 text-slate-600">
-              <Loader2 size={12} className="animate-spin" aria-hidden /> Memuat halaman…
-            </span>
-          )}
+        {/* Satu baris aksi, diletakkan SEBELUM browser agar selalu terlihat
+            tanpa scroll. Slot Hentikan tetap ada walau tidak aktif — checkbox
+            di kanan tidak ikut bergeser saat run mulai. */}
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+          <Button
+            onClick={() => void start()}
+            disabled={running || !canScrape}
+            title={canScrape ? undefined : `Buka postingan ${PLATFORM_LABEL_FULL[platform]} dulu di browser bawah.`}
+          >
+            {running ? 'Berjalan…' : 'Ambil dari halaman ini'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={() => void stop()}
+            disabled={!running}
+            aria-hidden={!running}
+            className={running ? '' : 'invisible'}
+          >
+            Hentikan
+          </Button>
+          <label className="ml-auto flex items-center gap-2 text-[11px] text-slate-600 font-medium cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={includeReplies}
+              onChange={(e) =>
+                void applyScrapeEvent(platform, {
+                  type: 'SET_OPTIONS',
+                  includeReplies: e.target.checked,
+                })
+              }
+              className="h-3.5 w-3.5 rounded border-slate-300 accent-slate-900"
+            />
+            Sertakan balasan
+          </label>
         </div>
+
+        {/* Satu blok status dengan tinggi tetap: target & ringkasan handoff
+            memakai slot kosong, jadi browser di bawahnya tidak pernah bergeser. */}
+        <div
+          role="status"
+          aria-live="polite"
+          className={`min-h-[92px] rounded-xl border px-3 py-2 text-[11px] leading-relaxed ${CALLOUT_TONE[tone]}`}
+        >
+          <div className="flex items-start gap-2">
+            <span className={`mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full ${DOT_TONE[tone]}`} aria-hidden />
+            {running ? (
+              <span className="flex items-center gap-2 font-medium">
+                <Loader2 size={13} className="animate-spin" aria-hidden />
+                Mengumpulkan… {state.count} {wordFor(platform)}
+              </span>
+            ) : (
+              <span className="font-medium break-words">{shownMessage}</span>
+            )}
+          </div>
+          <div className="mt-1 min-h-[16px] break-words pl-4 text-slate-500">
+            {targetLabel ? `Target: ${targetLabel}` : ''}
+          </div>
+          <div className="mt-1 flex min-h-[28px] items-center pl-4">
+            {lastHandoff && (
+              <div className="flex w-full flex-wrap items-center justify-between gap-2">
+                <span className="font-semibold text-emerald-800">
+                  Masuk rekap {lastHandoff.date} · {lastHandoff.matched} terpetakan · {lastHandoff.unmatched} belum
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onOpenCalendar?.()}
+                  className="shrink-0 font-bold text-emerald-800 underline underline-offset-2 hover:text-emerald-950"
+                >
+                  Lihat rekap
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
         <div
           ref={browserRef}
           className="relative h-[520px] w-full rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
-          aria-label={`Browser ${PLATFORM_LABEL[platform]}`}
+          role="region"
+          aria-label={`Browser ${PLATFORM_LABEL_FULL[platform]}`}
         >
-          {!isElectron && (
-            <div className="flex h-full items-center justify-center px-6 text-center text-[11px] text-slate-500">
-              Browser internal hanya tersedia di ReSo Desktop.
-            </div>
-          )}
-          {browserLoading && isElectron && (
+          {browserLoading && (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
               <Loader2 size={22} className="animate-spin text-slate-500" aria-hidden />
             </div>
           )}
         </div>
         <p className="text-[11px] text-slate-500">
-          Buka satu postingan/video → buka daftar komentar → klik tombol <b>Scrap</b> di kanan atas
-          halaman. Nama akan masuk ke daftar di bawah otomatis.
+          Buka postingan/video → buka daftar komentar → klik <b>Scrap</b> di kanan atas halaman.
+          Tombol <b>Ambil dari halaman ini</b> hanya cadangan bila tombol di halaman tidak muncul.
         </p>
       </Card>
 
-      <Card className="p-4 sm:p-5 space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <Button onClick={() => void start()} disabled={!isElectron || running} {...webDisabledProps}>
-            {running ? 'Berjalan…' : 'Proses halaman ini'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => void stop()}
-            disabled={!isElectron || !running}
-            {...webDisabledProps}
-          >
-            Hentikan
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => setConfirmClear(true)}
-            disabled={!isElectron || state.count === 0}
-            {...webDisabledProps}
-          >
-            Bersihkan
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() => void copyVisible()}
-            disabled={visible.length === 0}
-            title="Salin daftar hasil yang sedang terlihat (terfilter)"
-          >
-            {copiedKind === 'filter' ? 'Tersalin' : `Salin hasil filter (${visible.length})`}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void copyAll()}
-            disabled={state.count === 0}
-            title="Salin seluruh nama tanpa filter"
-          >
-            {copiedKind === 'all' ? 'Tersalin' : 'Salin semua'}
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => void sendToRekap()}
-            disabled={!isElectron}
-            title="Tulis hasil scrap terbaru ke rekap hari ini tanpa paste manual"
-            className="bg-slate-900 text-white font-bold"
-          >
-            Masukkan ke rekap hari ini
-          </Button>
-        </div>
-
-        <label className="flex items-center gap-2 text-[11px] text-slate-600 font-medium cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={includeReplies}
-            onChange={(e) =>
-              setRepliesOverride((prev) => ({ ...prev, [platform]: e.target.checked }))
-            }
-            className="h-3.5 w-3.5 rounded border-slate-300 accent-slate-900"
-          />
-          Sertakan balasan
-        </label>
-
-        <div
-          role="status"
-          aria-live="polite"
-          className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-[11px] leading-relaxed ${CALLOUT_TONE[tone]}`}
-        >
-          <span className={`mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full ${DOT_TONE[tone]}`} aria-hidden />
-          {running ? (
-            <span className="flex items-center gap-2 font-medium">
-              <Loader2 size={13} className="animate-spin" aria-hidden />
-              Mengumpulkan… {state.count} {wordFor(platform)}
-            </span>
-          ) : (
-            <span className="line-clamp-3 font-medium">{state.message}</span>
-          )}
-        </div>
-
-        {targetLabel && (
-          <p className="text-[11px] text-slate-400 break-words">Target: {targetLabel}</p>
-        )}
-      </Card>
-
       <Card className="p-4 sm:p-5 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-bold text-slate-900">
-              Hasil — {state.count} {wordFor(platform)}
-            </h2>
-            {filterActive && (
-              <p className="text-[11px] text-slate-500 mt-0.5">
-                Menampilkan {visible.length} dari {state.count} {wordFor(platform)}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Cari nama…"
-              className="h-8 w-40 text-[11px]"
-              aria-label="Cari nama"
-            />
-            <Button
-              variant={az ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setAz((v) => !v)}
-              aria-pressed={az}
-            >
-              A–Z
-            </Button>
-          </div>
+        <div className="flex items-center gap-2">
+          <h2 className="text-sm font-bold text-slate-900">
+            Terakhir diambil — {state.count} {wordFor(platform)}
+            {isStale && <span className="ml-1 font-semibold text-slate-500 text-[11px]">(sesi lalu)</span>}
+          </h2>
         </div>
 
-        {visible.length === 0 ? (
-          <p className="text-[11px] text-slate-400 py-6 text-center">
-            {state.count === 0 ? 'Belum ada hasil.' : 'Tidak ada yang cocok dengan pencarian.'}
-          </p>
+        {state.count === 0 ? (
+          <p className="text-[11px] text-slate-500 py-6 text-center">Belum ada hasil.</p>
         ) : (
-          <ol className="divide-y divide-slate-100 max-h-80 overflow-y-auto rounded-lg border border-slate-100">
-            {visible.map((name, i) => (
+          <ol className="divide-y divide-slate-100 max-h-60 overflow-y-auto rounded-lg border border-slate-100">
+            {state.names.map((name, i) => (
               <li key={`${name}-${i}`} className="px-3 py-2 text-[11px] text-slate-700 flex gap-3">
                 <span className="text-slate-300 tabular-nums w-8 shrink-0 text-right">{i + 1}</span>
                 <span className="break-words">{name}</span>
@@ -607,25 +497,6 @@ export default function ScraperPanel({
           </ol>
         )}
       </Card>
-
-      <ConfirmDialog
-        open={confirmClear}
-        title="Bersihkan hasil?"
-        description={
-          <>
-            Semua {state.count} {wordFor(platform)} untuk {PLATFORM_LABEL[platform]} akan dihapus
-            dari penyimpanan lokal. Tindakan ini tidak bisa dibatalkan.
-          </>
-        }
-        confirmLabel="Ya, bersihkan"
-        cancelLabel="Batal"
-        busy={clearing}
-        onConfirm={async () => {
-          await clear();
-          setConfirmClear(false);
-        }}
-        onCancel={() => setConfirmClear(false)}
-      />
     </div>
   );
 }

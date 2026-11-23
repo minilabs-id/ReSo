@@ -1,5 +1,5 @@
 /**
- * Shared engagement matching — single source of truth for client save & recalculate.
+ * Shared engagement matching — satu sumber kebenaran untuk pencocokan nama.
  * Matches raw paste text (names/usernames) to employees per platform.
  */
 

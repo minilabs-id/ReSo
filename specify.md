@@ -175,15 +175,14 @@ Gunakan daftar ini sebagai **peta fitur resmi saat ini**. Fitur baru idealnya me
 | **Laporan Bulanan** | Skor bulanan + breakdown % per platform; sort rank/bidang/nama; export |
 | **Data Pegawai** | CRUD pegawai; search/sort; import Excel/CSV; export; template Excel |
 | **Ambil Nama** | Scraper in-app (Chromium bawaan): TikTok/FB/IG; hasil masuk ke rekap harian |
-| **Pengaturan** | Simpan token Meta API; recalculate data; preferensi scraper; info aplikasi & lokasi database lokal |
+| **Pengaturan** | Preferensi scraper; cadangan/pulihkan data; info aplikasi & lokasi database lokal |
 
-### 5.3 Integrasi Meta (Facebook Graph API)
+### 5.3 Ambil nama (browser internal)
 
-- Token disimpan **lokal** (tabel `settings`, mesin operator) — bukan Firestore.
-- Menarik post FB + IG dalam window 15:00 H−1 → 15:00 D.
-- IG: tarik **komentar (username)** ke raw text + link post.
-- FB: karena batasan privasi API, fokusnya **link post** (bukan full list commenter setara IG).
-- TikTok: **belum** ada tarik API otomatis — **input manual tetap didukung penuh** (disepakati: TikTok platform inti; otomasi sulit, alur manual jangan dihilangkan).
+- Tidak ada integrasi Graph API / token Meta — fitur tersebut sudah dihapus.
+- FB/IG/TikTok: nama komentator diambil dari halaman yang dibuka di browser internal aplikasi, lalu dimasukkan ke rekap harian.
+- Window rekap resmi tetap 15:00 H−1 → 15:00 D (WIB).
+- Input manual tetap didukung penuh untuk ketiga platform (TikTok platform inti).
 
 ### 5.4 Export laporan
 
@@ -226,7 +225,7 @@ Gunakan daftar ini sebagai **peta fitur resmi saat ini**. Fitur baru idealnya me
 - Menambah role kompleks (pegawai self-service, atasan, dll.) tanpa spesifikasi role.
 - Mengganti stack penyimpanan lokal (SQLite → lain) tanpa plan migrasi data operator yang sudah berisi rekap nyata.
 - Menambahkan AI chat / generative UI yang **menggantikan** alur rekap manual tanpa opsi fallback.
-- Menyimpan secret API di client tanpa pertimbangan security (token Meta disimpan lokal di mesin operator — jangan dikirim ke pihak ketiga tanpa alasan).
+- Menyimpan secret API di client tanpa pertimbangan security (aplikasi tidak lagi menyimpan token/secret apa pun).
 
 ### 6.3 Debt / celah yang diketahui (bukan “fitur hilang”)
 

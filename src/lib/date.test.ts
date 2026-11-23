@@ -2,14 +2,12 @@
  * Tanggal WIB — regression checks (run: npx tsx src/lib/date.test.ts)
  *
  * Fokus: batas hari WIB (Asia/Jakarta, UTC+7, without DST) dan memastikan
- * helper lama (getLocalISODate/parseLocalISODate/addLocalDays) tidak berubah.
+ * helper utama (getLocalISODate/parseLocalISODate/getWibDateParts).
  */
 import {
   getLocalISODate,
   parseLocalISODate,
-  addLocalDays,
   getWibDateParts,
-  addWibDays,
 } from './date';
 
 function assert(cond: boolean, msg: string) {
@@ -48,36 +46,12 @@ function ok(msg: string) {
   ok('getWibDateParts: konsisten tanpa DST (Jan/Jul, leap year)');
 }
 
-// ---- addWibDays: geser hari, lintas tahun & leap year ----
-{
-  assert(addWibDays('2026-01-01', 1) === '2026-01-02', '+1 hari');
-  assert(addWibDays('2026-01-01', -1) === '2025-12-31', '-1 hari lintas tahun');
-  assert(addWibDays('2025-12-31', 1) === '2026-01-01', '+1 hari lintas tahun mondial');
-  assert(addWibDays('2026-01-02', 0) === '2026-01-02', 'delta 0 → tetap');
-  assert(addWibDays('2026-01-01', 7) === '2026-01-08', '+7 hari');
-  ok('addWibDays: geser hari & lintas batas tahun');
-}
-
-// ---- addWibDays: leap year & input invalid ----
-{
-  assert(addWibDays('2024-02-28', 1) === '2024-02-29', '28 Feb 2024 +1 → 29 Feb');
-  assert(addWibDays('2024-02-29', 1) === '2024-03-01', '29 Feb 2024 +1 → 1 Mar');
-  assert(addWibDays('2025-02-28', 1) === '2025-03-01', '28 Feb 2025 +1 → 1 Mar (bukan leap)');
-  assert(addWibDays('2026-02-30', 1) === '', 'tanggal kalender palsu → string kosong');
-  assert(addWibDays('2026-13-01', 1) === '', 'bulan di luar rentang → string kosong');
-  assert(addWibDays('rusak', 1) === '', 'format rusak → string kosong');
-  assert(addWibDays('2026-01-01', 1.5) === '', 'delta non-bulat → string kosong');
-  ok('addWibDays: leap year & input invalid');
-}
-
-// ---- REGRESI: helper lama tidak berubah semantiknya ----
+// ---- REGRESI: helper utama ----
 {
   assert(getLocalISODate(new Date('2026-01-01T17:30:00Z')) === '2026-01-02', 'getLocalISODate tetap WIB');
   assert(parseLocalISODate('2026-01-02').toISOString() === '2026-01-01T17:00:00.000Z', 'parseLocalISODate tetap WIB midnight');
   assert(isNaN(parseLocalISODate('2026-02-30').getTime()), 'parseLocalISODate tetap tolak tanggal palsu');
-  assert(addLocalDays('2026-01-01', -1) === '2025-12-31', 'addLocalDays tetap -1 hari');
-  assert(addLocalDays('2026-01-01', 1) === '2026-01-02', 'addLocalDays tetap +1 hari');
-  ok('helper lama (getLocalISODate/parseLocalISODate/addLocalDays) tidak berubah');
+  ok('helper tanggal WIB utama tetap stabil');
 }
 
 console.log(`\ndate: ${n} checks OK`);

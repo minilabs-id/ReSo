@@ -2,13 +2,13 @@
  * Test modul hasil port (M3) — jalankan: npm run test:shared
  *
  * Fokus: perilaku yang mudah rusak saat port dari tmp-shared.js (normalisasi,
- * deteksi platform, parser, validator template, patch state, pesan).
+ * parser TikTok, opsi engine, patch state, pesan, allowlist host).
  */
-import { normalizeCommentName, normalizeNickname, normalizeInstagramUsername, normalizeName, mergeNames, mergeAcrossPlatforms, filterNames, sortNamesAz, namesToClipboardText } from './normalize'
-import { detectPlatform, extractFbFeedbackIds, extractInstagramShortcode, extractAwemeId, isFacebookPostPage } from './platform'
-import { parseTikTokComments, parseIgComments, extractGraphqlNames } from './parsers'
-import { sanitizeTikTokTemplateUrl, isTikTokTemplateValid, sanitizeInstagramTemplateUrl, isInstagramTemplateValid, sanitizeEngineOptions, TEMPLATE_TTL_MS } from './template'
-import { applyStatePatch, defaultStateFor, newRunId, isStaleRun } from './state'
+import { normalizeCommentName, normalizeNickname, normalizeInstagramUsername, normalizeName, mergeNames, filterNames, sortNamesAz, namesToClipboardText } from './normalize'
+import { isHostAllowed, isAllowedScrapeUrl } from './platform'
+import { parseTikTokComments } from './parsers'
+import { sanitizeEngineOptions, TEMPLATE_TTL_MS } from './template'
+import { applyStatePatch, defaultStateFor, newRunId } from './state'
 import { reduce } from './run-state'
 import { doneMessage } from './messages'
 
@@ -61,33 +61,6 @@ eq(filterNames(['Andi', 'Budi', 'Citra'], 'and'), ['Andi'], 'filter substring ca
 eq(filterNames(['Andi', 'Budi'], ''), ['Andi', 'Budi'], 'filter kosong → semua')
 eq(filterNames(null, 'x'), [], 'filter input null aman')
 eq(sortNamesAz(['budi', 'Andi']), ['Andi', 'budi'], 'sort A-Z locale id')
-eq(
-  mergeAcrossPlatforms([
-    { platform: 'instagram', names: ['Andi.S'] },
-    { platform: 'tiktok', names: ['andi.s'] },
-  ]),
-  ['andi.s'],
-  'merge lintas platform dedupe'
-)
-
-// ===================== platform =====================
-eq(detectPlatform('https://www.facebook.com/x/posts/123'), 'facebook', 'detect FB')
-eq(detectPlatform('https://www.tiktok.com/@a/video/7234567890'), 'tiktok', 'detect TT')
-eq(detectPlatform('https://instagram.com/p/ABC123/'), 'instagram', 'detect IG')
-eq(detectPlatform('https://example.com/'), null, 'detect selain platform → null')
-
-eq(extractAwemeId('https://www.tiktok.com/@a/video/7234567890123'), '7234567890123', 'aweme dari path video')
-eq(extractAwemeId('https://www.tiktok.com/embed/12345678901'), '12345678901', 'aweme dari embed')
-eq(extractAwemeId('https://www.tiktok.com/foryou'), null, 'aweme tidak ada')
-
-eq(extractInstagramShortcode('https://www.instagram.com/reel/XYZ-9_/'), 'XYZ-9_', 'shortcode reel')
-eq(extractInstagramShortcode('https://www.instagram.com/share/p/AbC123/'), 'AbC123', 'shortcode share')
-
-const fbIds = extractFbFeedbackIds('https://www.facebook.com/groups/1/posts/123456789/')
-eq(fbIds, ['123456789'], 'FB id dari /posts/')
-eq(isFacebookPostPage('https://www.facebook.com/groups/1/posts/123456789/'), true, 'FB post page')
-eq(isFacebookPostPage('https://www.facebook.com/watch/?v=123456789012'), true, 'FB watch page')
-eq(isFacebookPostPage('https://www.facebook.com/'), false, 'FB home bukan post page')
 
 // ===================== parsers =====================
 eq(
@@ -122,51 +95,8 @@ eq(
   'TT parser fallback walk'
 )
 
-eq(
-  parseIgComments({ comments: [{ user: { username: 'andi.s' } }, { user: {} }, null] }),
-  ['andi.s'],
-  'IG parser'
-)
-
-const graphql = '{"data":{"node":{"__typename":"Comment","created_time":123,"author":{"__typename":"User","name":"Andi Saputra"}}}}'
-eq(extractGraphqlNames(graphql, true), ['Andi Saputra'], 'FB graphql top-level')
-const graphqlReply =
-  '{"__typename":"Comment","depth":1,"author":{"__typename":"User","name":"Budi"}}' +
-  '{"__typename":"Comment","created_time":5,"author":{"name":"Andi"}}'
-ok(!extractGraphqlNames(graphqlReply, false).includes('Budi'), 'FB graphql tolak balasan saat !includeReplies')
-eq(extractGraphqlNames('bukan json', true), [], 'FB graphql teks tanpa match')
-
 // ===================== template =====================
-const ttUrl = 'https://www.tiktok.com/api/comment/list/?aweme_id=123&msToken=abc&X-Bogus=xyz'
-eq(
-  sanitizeTikTokTemplateUrl(ttUrl),
-  'https://www.tiktok.com/api/comment/list/?aweme_id=123',
-  'TT template: buang param signing'
-)
-eq(sanitizeTikTokTemplateUrl('bukan url'), null, 'TT template: URL invalid → null')
-eq(
-  isTikTokTemplateValid('https://www.tiktok.com/api/comment/list/?aweme_id=1', { capturedAt: Date.now() }),
-  true,
-  'TT template valid'
-)
-eq(isTikTokTemplateValid('https://www.tiktok.com/api/comment/list/reply/?x=1', { capturedAt: Date.now() }), false, 'TT template reply endpoint ditolak')
-eq(isTikTokTemplateValid('https://www.tiktok.com/api/comment/list/?a=1', { capturedAt: Date.now() - TEMPLATE_TTL_MS - 1 }), false, 'TT template kedaluwarsa')
-eq(isTikTokTemplateValid('https://www.tiktok.com/api/comment/list/?a=1', { capturedAt: Date.now(), awemeId: '1' }, '2'), false, 'TT template aweme beda')
-eq(isTikTokTemplateValid('https://evil.com/api/comment/list/?a=1', { capturedAt: Date.now() }), false, 'TT template host palsu ditolak')
-
-const igUrl = 'https://www.instagram.com/api/v1/media/123/comments/?max_id=9&__a=1&index=2'
-eq(
-  sanitizeInstagramTemplateUrl(igUrl),
-  'https://www.instagram.com/api/v1/media/123/comments/',
-  'IG template: buang pagination'
-)
-eq(sanitizeInstagramTemplateUrl('https://www.instagram.com/api/v1/media/1/inline_child_comments/'), null, 'IG template inline ditolak')
-eq(
-  isInstagramTemplateValid('https://www.instagram.com/api/v1/media/1/comments/', { capturedAt: Date.now() }),
-  true,
-  'IG template valid'
-)
-
+ok(TEMPLATE_TTL_MS === 45 * 60 * 1000, 'TTL template 45 menit')
 eq(sanitizeEngineOptions('START', {}, 'tiktok').maxMs, 120_000, 'opsi START default TT')
 eq(sanitizeEngineOptions('START', { maxMs: 1 }, 'facebook').maxMs, 8_000, 'opsi maxMs di-clamp bawah')
 eq(sanitizeEngineOptions('START', { maxMs: 9e9 }, 'facebook').maxMs, 180_000, 'opsi maxMs di-clamp atas')
@@ -186,17 +116,11 @@ eq(patched.names, ['Andi'], 'patch dedupe nama')
 eq(patched.count, 1, 'patch hitung ulang count')
 ok(patched.updatedAt > 0, 'patch set updatedAt')
 ok(newRunId() !== newRunId(), 'runId unik')
-eq(isStaleRun(null, 'x'), true, 'stale: state tanpa run aktif + pesan bertanda run')
-eq(isStaleRun(null, null), false, 'tidak stale: state dan pesan tanpa runId')
-eq(isStaleRun('a', null), true, 'stale: pesan tanpa runId')
-eq(isStaleRun('a', 'b'), true, 'stale: runId beda')
-eq(isStaleRun('a', 'a'), false, 'stale: runId sama')
 
-// cross-check: isStaleRun HARUS sejalan dengan keputusan reducer (parity race tab)
+// cross-check: keputusan reducer konsisten untuk runId yang tidak cocok
 {
   const idle = defaultStateFor('facebook') // runId = null
   const intruder = { type: 'PROGRESS' as const, runId: 'r1', names: ['Penyusup'] }
-  eq(isStaleRun(idle.runId, intruder.runId), true, 'idle: isStaleRun menandai intruder stale')
   eq(reduce('facebook', idle, intruder).changed, false, 'idle: reducer menolak PROGRESS dari run lain')
   eq(
     reduce('facebook', idle, { type: 'DONE', runId: 'r1', reason: 'complete' }).changed,
@@ -205,9 +129,7 @@ eq(isStaleRun('a', 'a'), false, 'stale: runId sama')
   )
 
   const active = reduce('facebook', idle, { type: 'START', runId: 'r1', includeReplies: true }).state
-  eq(isStaleRun(active.runId, 'r1'), false, 'aktif: runId sama tidak stale')
   eq(reduce('facebook', active, { type: 'PROGRESS', runId: 'r1', names: ['Andi'] }).changed, true, 'aktif: reducer menerima PROGRESS runId sama')
-  eq(isStaleRun(active.runId, 'r2'), true, 'aktif: runId beda stale')
   eq(reduce('facebook', active, { type: 'PROGRESS', runId: 'r2', names: ['Penyusup'] }).changed, false, 'aktif: reducer menolak PROGRESS runId beda')
 }
 
@@ -218,5 +140,17 @@ ok(doneMessage('rate_limit', 3, 'facebook').includes('429'), 'pesan rate limit')
 ok(doneMessage('blocked', 0, 'instagram').includes('403'), 'pesan blocked IG')
 ok(doneMessage('error', 0, 'facebook', { extra: 'boom' }) === 'boom', 'pesan error pakai extra')
 ok(doneMessage('tidak_dikenal', 0, 'facebook') === 'Siap.', 'pesan fallback')
+
+// ===================== allowlist host (regresi suffix-spoof) =====================
+ok(isHostAllowed('facebook.com', 'facebook.com'), 'host exact diterima')
+ok(isHostAllowed('www.facebook.com', 'facebook.com'), 'subdomain www diterima')
+ok(isHostAllowed('m.tiktok.com', 'tiktok.com'), 'subdomain tiktok diterima')
+ok(!isHostAllowed('evilfacebook.com', 'facebook.com'), 'suffix-spoof facebook ditolak')
+ok(!isHostAllowed('eviltiktok.com', 'tiktok.com'), 'suffix-spoof tiktok ditolak')
+ok(!isHostAllowed('notinstagram.com', 'instagram.com'), 'suffix-spoof instagram ditolak')
+ok(isAllowedScrapeUrl('https://www.instagram.com/p/ABC/', 'instagram'), 'URL IG valid')
+ok(!isAllowedScrapeUrl('https://evilfacebook.com/posts/1', 'facebook'), 'URL FB spoof ditolak')
+ok(!isAllowedScrapeUrl('file:///C:/secret.txt', 'tiktok'), 'URL non-http ditolak')
+ok(!isAllowedScrapeUrl('https://tiktok.com.evil.com/video/1', 'tiktok'), 'subdomain palsu ditolak')
 
 console.log(`shared (port M3): ${n} checks OK`)

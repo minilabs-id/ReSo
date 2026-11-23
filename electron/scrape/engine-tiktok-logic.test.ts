@@ -4,7 +4,6 @@
  */
 import {
   isTikTokCommentApi,
-  isTikTokReplyApi,
   isTikTokLoginWall,
   validateCaptureRequest,
   pickCaptureMode,
@@ -30,7 +29,6 @@ const base: CaptureRequest = {
 // --- deteksi endpoint ---
 eq(isTikTokCommentApi('https://www.tiktok.com/api/comment/list/?aweme_id=1'), true, 'comment/list dikenali')
 eq(isTikTokCommentApi('https://www.tiktok.com/api/comment/list/reply/?comment_id=1'), false, 'reply bukan list')
-eq(isTikTokReplyApi('https://www.tiktok.com/api/comment/list/reply/?comment_id=1'), true, 'reply dikenali')
 eq(isTikTokCommentApi('https://www.tiktok.com/api/item/detail/?itemId=1'), false, 'endpoint lain ditolak')
 eq(isTikTokCommentApi('HTTPS://WWW.TIKTOK.COM/API/COMMENT/LIST/?x=1'), true, 'case-insensitive')
 

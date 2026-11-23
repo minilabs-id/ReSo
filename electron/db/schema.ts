@@ -43,9 +43,6 @@ CREATE TABLE IF NOT EXISTS daily_engagement (
   ig_engaged_employee_ids    TEXT NOT NULL DEFAULT '[]',
   fb_engaged_employee_ids    TEXT NOT NULL DEFAULT '[]',
   tiktok_engaged_employee_ids TEXT NOT NULL DEFAULT '[]',
-  ig_links                   TEXT NOT NULL DEFAULT '[]',
-  fb_links                   TEXT NOT NULL DEFAULT '[]',
-  tiktok_links               TEXT NOT NULL DEFAULT '[]',
   unmatched_names            TEXT NOT NULL DEFAULT '[]',
   posted_at                  TEXT NOT NULL DEFAULT '[]',
   auto_filled_at             TEXT,
@@ -92,9 +89,6 @@ export interface DailyRow {
   ig_engaged_employee_ids: string
   fb_engaged_employee_ids: string
   tiktok_engaged_employee_ids: string
-  ig_links: string
-  fb_links: string
-  tiktok_links: string
   unmatched_names: string
   posted_at: string
   auto_filled_at: string | null
@@ -176,9 +170,6 @@ export function dailyFromRow(row: DailyRow): DailyEngagement {
     igEngagedEmployeeIds: parseJson<string[]>(row.ig_engaged_employee_ids, []),
     fbEngagedEmployeeIds: parseJson<string[]>(row.fb_engaged_employee_ids, []),
     tiktokEngagedEmployeeIds: parseJson<string[]>(row.tiktok_engaged_employee_ids, []),
-    igLinks: parseJson<string[]>(row.ig_links, []),
-    fbLinks: parseJson<string[]>(row.fb_links, []),
-    tiktokLinks: parseJson<string[]>(row.tiktok_links, []),
     unmatchedNames: parseJson<UnmatchedName[]>(row.unmatched_names, []),
     postedAt: parseJson<string[]>(row.posted_at, []),
     // Timestamp: `undefined` = belum pernah diisi (tipe domain memakai
@@ -215,9 +206,6 @@ export function dailyPatchToColumns(
     ['igEngagedEmployeeIds', 'ig_engaged_employee_ids'],
     ['fbEngagedEmployeeIds', 'fb_engaged_employee_ids'],
     ['tiktokEngagedEmployeeIds', 'tiktok_engaged_employee_ids'],
-    ['igLinks', 'ig_links'],
-    ['fbLinks', 'fb_links'],
-    ['tiktokLinks', 'tiktok_links'],
     ['unmatchedNames', 'unmatched_names'],
     ['postedAt', 'posted_at'],
   ]

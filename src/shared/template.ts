@@ -3,100 +3,11 @@
  *
  * PORT 1:1 dari `tmp-shared.js` (baris 872–1034 template, 1036–1128 options).
  */
-import type { EngineOptions, Platform, TemplateMeta } from './types'
+import type { EngineOptions, Platform } from './types'
+import { isHostAllowed } from './platform'
 
 /** TTL template TikTok (menit → ms). */
 export const TEMPLATE_TTL_MS = 45 * 60 * 1000
-/** TTL template Instagram — lebih pendek (lebih rapuh). */
-export const IG_TEMPLATE_TTL_MS = 30 * 60 * 1000
-
-/** Buang parameter signing berumur pendek sebelum template disimpan. */
-export function sanitizeTikTokTemplateUrl(url: unknown): string | null {
-  if (!url || typeof url !== 'string') return null
-  try {
-    const u = new URL(url)
-    for (const key of ['msToken', 'X-Bogus', 'X-Gnarly', 'X-Dynosaur', '_signature', 'signature']) {
-      u.searchParams.delete(key)
-    }
-    return u.toString()
-  } catch {
-    return null
-  }
-}
-
-export function isTikTokTemplateValid(
-  url: unknown,
-  meta: TemplateMeta | null | undefined,
-  requiredAwemeId: string | null = null
-): boolean {
-  if (!url || typeof url !== 'string') return false
-  try {
-    if (!new URL(url).hostname.endsWith('tiktok.com')) return false
-  } catch {
-    return false
-  }
-  if (!url.toLowerCase().includes('/api/comment/list')) return false
-  if (url.toLowerCase().includes('/api/comment/list/reply')) return false
-  const capturedAt = meta?.capturedAt
-  if (!capturedAt || typeof capturedAt !== 'number') return false
-  if (Date.now() - capturedAt > TEMPLATE_TTL_MS) return false
-  if (requiredAwemeId && meta?.awemeId && String(meta.awemeId) !== String(requiredAwemeId)) return false
-  return true
-}
-
-/** Buang parameter pagination/app-noise sebelum template Instagram disimpan. */
-export function sanitizeInstagramTemplateUrl(url: unknown): string | null {
-  if (!url || typeof url !== 'string') return null
-  try {
-    const u = new URL(url)
-    if (!u.href.includes('instagram.com/api/v1/media/')) return null
-    if (!u.href.includes('/comments/')) return null
-    if (u.href.includes('/inline_child_comments')) return null
-    for (const key of [
-      'max_id',
-      'min_id',
-      'index',
-      'a1',
-      '__user',
-      '__a',
-      '__req',
-      '__dyn',
-      '__csr',
-      '__tt',
-      '__bfa',
-      '__aut',
-      '__spin_r',
-      '__spin_b',
-      '__spin_t',
-    ]) {
-      u.searchParams.delete(key)
-    }
-    return u.toString()
-  } catch {
-    return null
-  }
-}
-
-export function isInstagramTemplateValid(
-  url: unknown,
-  meta: TemplateMeta | null | undefined,
-  requiredMediaId: string | null = null
-): boolean {
-  if (!url || typeof url !== 'string') return false
-  try {
-    if (!new URL(url).hostname.endsWith('instagram.com')) return false
-  } catch {
-    return false
-  }
-  if (!url.includes('/api/v1/media/')) return false
-  if (!url.includes('/comments/')) return false
-  if (url.includes('/inline_child_comments')) return false
-  const capturedAt = meta?.capturedAt
-  if (!capturedAt || typeof capturedAt !== 'number') return false
-  if (Date.now() - capturedAt > IG_TEMPLATE_TTL_MS) return false
-  if (requiredMediaId && meta?.mediaId && String(meta.mediaId) !== String(requiredMediaId)) return false
-  return true
-}
 
 // ===================== Engine options =====================
 
@@ -112,14 +23,14 @@ export function sanitizeEngineOptions(
   const raw = options && typeof options === 'object' ? (options as Record<string, unknown>) : {}
   const isTikTokHost = (u: string): boolean => {
     try {
-      return new URL(u).hostname.endsWith('tiktok.com')
+      return isHostAllowed(new URL(u).hostname, 'tiktok.com')
     } catch {
       return false
     }
   }
   const isIgHost = (u: string): boolean => {
     try {
-      return new URL(u).hostname.endsWith('instagram.com')
+      return isHostAllowed(new URL(u).hostname, 'instagram.com')
     } catch {
       return false
     }

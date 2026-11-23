@@ -1,8 +1,7 @@
 /**
- * Parser payload komentar (pure) — TikTok / Instagram / Facebook GraphQL.
+ * Parser payload komentar TikTok (pure).
  *
- * PORT 1:1 dari `tmp-shared.js` (BLOCK PARSERS, baris 527–717).
- * Semua fungsi murni: memetakan payload JSON/teks → daftar nama mentah.
+ * Fungsi murni: memetakan payload JSON → daftar nickname mentah.
  * Normalisasi/dedupe dilakukan pemanggil (src/shared/normalize.ts).
  */
 
@@ -66,116 +65,5 @@ export function parseTikTokComments(data: unknown, includeReplies: boolean): str
     }
   }
   walk(data, 0)
-  return out
-}
-
-/** Instagram: username dari payload comments (top-level). */
-export function parseIgComments(data: unknown): string[] {
-  const out: string[] = []
-  const comments = isRecord(data) && Array.isArray(data['comments']) ? (data['comments'] as unknown[]) : []
-  for (const c of comments) {
-    if (!isRecord(c)) continue
-    const user = isRecord(c['user']) ? c['user'] : null
-    const u = user && typeof user['username'] === 'string' ? user['username'] : ''
-    if (u) out.push(u)
-  }
-  return out
-}
-
-/**
- * Facebook: nama dari teks GraphQL (pola regex). Balasan ikut hanya saat
- * includeReplies (cermin isReplyComment di walkJson engine lama).
- */
-export function extractGraphqlNames(text: unknown, includeReplies: boolean): string[] {
-  const out: string[] = []
-  if (!text || typeof text !== 'string') return out
-
-  const patterns: RegExp[] = [
-    /"__typename"\s*:\s*"Comment"[\s\S]{0,1500}?"author"\s*:\s*\{[\s\S]{0,600}?"name"\s*:\s*"((?:\\.|[^"\\]){2,100})"/g,
-    /"author"\s*:\s*\{[\s\S]{0,400}?"__typename"\s*:\s*"User"[\s\S]{0,300}?"name"\s*:\s*"((?:\\.|[^"\\]){2,100})"/g,
-    /"author"\s*:\s*\{[\s\S]{0,300}?"name"\s*:\s*"((?:\\.|[^"\\]){2,100})"[\s\S]{0,300}?"__typename"\s*:\s*"User"/g,
-    /"created_time"\s*:\s*\d+[\s\S]{0,500}?"author"\s*:\s*\{[\s\S]{0,400}?"name"\s*:\s*"((?:\\.|[^"\\]){2,100})"/g,
-    /"author"\s*:\s*\{[\s\S]{0,400}?"name"\s*:\s*"((?:\\.|[^"\\]){2,100})"[\s\S]{0,500}?"created_time"\s*:\s*\d+/g,
-    /"body"\s*:\s*\{[^}]{0,200}"text"\s*:\s*"[^"]{0,500}"[\s\S]{0,400}?"author"\s*:\s*\{[\s\S]{0,400}?"name"\s*:\s*"((?:\\.|[^"\\]){2,100})"/g,
-  ]
-
-  // Batas objek komentar dihitung sekali (string-aware, satu pass) supaya field
-  // komentar tetangga / sub-pohon balasan tidak ikut terbaca.
-  let commentSpans: { starts: number[]; ends: Map<number, number> } | null = null
-  const isReplyAt = (index: number): boolean => {
-    if (!commentSpans) {
-      const starts: number[] = []
-      const ends = new Map<number, number>()
-      const stack: number[] = []
-      let inStr = false
-      let esc = false
-      for (let i = 0; i < text.length; i++) {
-        const ch = text[i]!
-        if (inStr) {
-          if (esc) esc = false
-          else if (ch === '\\') esc = true
-          else if (ch === '"') inStr = false
-          continue
-        }
-        if (ch === '"') inStr = true
-        else if (ch === '{') {
-          stack.push(i)
-          if (/^\s*"__typename"\s*:\s*"Comment"/.test(text.slice(i + 1, i + 41))) starts.push(i)
-        } else if (ch === '}') {
-          const open = stack.pop()
-          if (open !== undefined) ends.set(open, i + 1)
-        }
-      }
-      commentSpans = { starts, ends }
-    }
-    const { starts, ends } = commentSpans
-
-    let lo = 0
-    let hi = starts.length - 1
-    let pos = -1
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1
-      if (starts[mid]! <= index) {
-        pos = mid
-        lo = mid + 1
-      } else {
-        hi = mid - 1
-      }
-    }
-    while (pos >= 0) {
-      const start = starts[pos]!
-      const end = ends.get(start) ?? text.length
-      if (end > index) {
-        const next = pos + 1 < starts.length ? starts[pos + 1]! : end
-        const ctx = text.slice(start, Math.min(next, end))
-        if (/"(?:comment_parent|reply_parent_comment|comment_direct_parent)"\s*:\s*\{/.test(ctx)) return true
-        const depth = /"depth"\s*:\s*(\d+)/.exec(ctx)
-        if (depth && Number(depth[1]) > 0) return true
-        if (/"(?:is_reply|isReply)"\s*:\s*true/.test(ctx)) return true
-        return false
-      }
-      pos--
-    }
-    return false
-  }
-
-  const seen = new Set<string>()
-  for (const re of patterns) {
-    re.lastIndex = 0
-    let m: RegExpExecArray | null
-    while ((m = re.exec(text))) {
-      if (!includeReplies && isReplyAt(m.index)) continue
-      let name: string
-      try {
-        name = JSON.parse(`"${m[1]}"`) as string
-      } catch {
-        name = m[1]!
-      }
-      if (typeof name === 'string' && name && !seen.has(name.toLowerCase())) {
-        seen.add(name.toLowerCase())
-        out.push(name)
-      }
-    }
-  }
   return out
 }

@@ -36,6 +36,9 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
   const { weeklyReports, weeklyStats, weeklyDatesList, changeWeek, weeklySortMode, setWeeklySortMode, handleExportPDF, handleExportImage, handleExportExcel, canExportImage, canGoNext = true, employeeCount, weekRange, printRef, isLoading, sortedEmployees, dailyEngagementsMap } = props;
   const wr = weeklyReports[0];
   const displayWeekRange = weekRange ?? wr?.weekRange;
+  // Tanpa data (master pegawai kosong), jangan biarkan "undefined" bocor ke UI.
+  const weekTitle = wr ? `Minggu ISO ke-${wr.weekNumber}` : 'Belum ada data';
+  const weekSubtitle = displayWeekRange ?? (wr ? `${wr.monthName} ${wr.year}` : 'Tambah pegawai untuk melihat laporan');
 
   // Filename must reflect the *viewed* week, not today's date.
   const firstWeekDate = weeklyDatesList[0];
@@ -44,10 +47,10 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
     ? `recaplink-mingguan-${firstWeekDate}_${lastWeekDate}`
     : `recaplink-mingguan-${wr?.year ?? 'periode'}-W${String(wr?.weekNumber ?? 0).padStart(2, '0')}`;
   return (
-    <motion.div key="reports" variants={containerVariants} initial="hidden" animate="visible" exit="hidden" className="space-y-6 md:space-y-8">
+    <motion.div key="reports" variants={containerVariants} initial="hidden" animate="visible" exit="hidden" className="space-y-6">
       <ReportControls
-        title={`Minggu ISO ke-${wr?.weekNumber}`}
-        subtitle={displayWeekRange ?? `${wr?.monthName} ${wr?.year}`}
+        title={weekTitle}
+        subtitle={weekSubtitle}
         currentBadge={wr?.isCurrentWeek ? 'Minggu ini' : null}
         onPrev={() => changeWeek(-1)}
         onNext={() => changeWeek(1)}
@@ -66,11 +69,11 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
         isLoading={isLoading}
       />
 
-      <motion.div variants={itemVariants} ref={printRef} className="bg-white rounded-xl border border-slate-200 min-h-[400px] md:min-h-[600px] flex flex-col p-4 sm:p-6 md:p-10">
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-slate-200 gap-2 mb-8 pb-6">
+      <motion.div variants={itemVariants} ref={printRef} className="bg-white rounded-xl border border-slate-200 min-h-[600px] flex flex-col p-8">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 mb-8 pb-6 min-w-0">
           <div className="space-y-0.5">
-            <h3 className="font-black text-slate-900 tracking-tight uppercase text-2xl">Laporan Mingguan</h3>
-            <p className="font-bold text-slate-500 uppercase tracking-widest text-sm">Rekapitulasi Engagement • Minggu ISO ke-{wr?.weekNumber} • {displayWeekRange ?? `${wr?.monthName} ${wr?.year}`}</p>
+            <h2 className="font-black text-slate-900 tracking-tight uppercase text-2xl">Laporan Mingguan</h2>
+            <p className="font-bold text-slate-500 uppercase tracking-widest text-sm">{weekSubtitle}</p>
           </div>
           <div className="flex items-center gap-2 md:gap-3">
             <div className="flex flex-wrap items-center justify-end gap-1 md:gap-1.5">
@@ -83,53 +86,35 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
             </div>
             <div className="bg-slate-50 rounded-lg border border-slate-200 flex flex-col justify-center shrink-0 text-left md:text-right p-3">
               <p className={cn("font-bold text-slate-900 uppercase tracking-widest leading-none", "text-[11px]")}>ReSo</p>
-              <p className={cn("text-slate-500 leading-none", "text-[11px] mt-1")}>Gen: {new Date().toLocaleDateString('id-ID')}</p>
+              <p className={cn("text-slate-500 leading-none", "text-[11px] mt-1")} title="Tanggal pembuatan laporan">Dibuat {new Date().toLocaleDateString('id-ID')}</p>
             </div>
           </div>
         </div>
-        <div className="md:hidden space-y-2 mb-4">
-            {sortedEmployees.map((emp) => {
-              const total = weeklyStats.employeeTotals[emp.id] || 0;
-              const max = weeklyStats.maxEngagements || 1;
-              const pct = Math.round((total / max) * 100);
-              const isTop = weeklyStats.top3Ids.includes(emp.id);
-              const isBottom = weeklyStats.bottom3Ids.includes(emp.id);
-              return (
-                <div key={emp.id} className={cn('flex items-center justify-between gap-3 p-3 rounded-xl border', isTop ? 'bg-emerald-50/80 border-emerald-100' : isBottom ? 'bg-rose-50/50 border-rose-100' : 'bg-slate-50/50 border-slate-200')}>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900 truncate">{emp.name}</p>
-                    <span className={cn('text-[11px] font-medium px-1.5 py-0.5 rounded', getBidangColor(emp.bidang))}>{emp.bidang || '—'}</span>
-                  </div>
-                  <div className="text-right shrink-0">
-                    <p className={cn('text-sm font-bold', isTop ? 'text-emerald-700' : isBottom ? 'text-rose-600' : 'text-slate-700')}>{pct}%</p>
-                    <p className="text-[11px] text-slate-400">{total}/{max}</p>
-                  </div>
-                </div>
-              );
-            })}
+
+
+        {/* Keterangan warna baris peringkat — hanya relevan bila ada baris */}
+        {sortedEmployees.length > 0 && (
+          <div className="flex items-center gap-4 text-[11px] text-slate-500 mb-2">
+            <span className="font-semibold uppercase tracking-wider text-slate-500">Keterangan:</span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-emerald-100 border border-emerald-200" />
+              3 teratas
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 rounded-sm bg-red-100 border border-red-200" />
+              3 terbawah
+            </span>
           </div>
+        )}
 
-        {/* Keterangan warna baris peringkat */}
-        <div className="hidden md:flex items-center gap-4 text-[11px] text-slate-500 mb-2">
-          <span className="font-semibold uppercase tracking-wider text-slate-400">Keterangan:</span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-emerald-100 border border-emerald-200" />
-            3 teratas
-          </span>
-          <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-sm bg-red-100 border border-red-200" />
-            3 terbawah
-          </span>
-        </div>
-
-        <div className="flex-1 rounded-xl border border-slate-200 overflow-auto max-h-[60vh] md:max-h-[600px] hidden md:block">
+        <div className="flex-1 rounded-xl border border-slate-200 overflow-auto max-h-[600px]">
           <div className="min-w-max">
             <Table id="engagement-table" className="border-collapse w-full">
               <TableHeader>
                 <TableRow className="bg-slate-50/50 border-b border-slate-200">
                   <TableHead className="sticky left-0 z-20 bg-slate-50 border-r border-slate-200 px-3 py-2 font-bold text-slate-900 whitespace-nowrap text-[11px] uppercase tracking-wider">Nama Pegawai</TableHead>
                   {weeklyDatesList.map((date, dIdx) => (
-                    <TableHead key={dIdx} className={cn("border-r border-slate-200 text-center px-2 py-2 text-[11px] font-bold w-[1%] whitespace-nowrap", date === getLocalISODate(new Date()) ? "text-slate-900 bg-slate-100/50" : "text-slate-400")}>
+                    <TableHead key={dIdx} className={cn("border-r border-slate-200 text-center px-2 py-2 text-[11px] font-bold w-[1%] whitespace-nowrap", date === getLocalISODate(new Date()) ? "text-slate-900 bg-slate-100/50" : "text-slate-500")}>
                       <div className="flex flex-col items-center">
                         <span className="opacity-50 text-[11px]">{parseLocalISODate(date).toLocaleDateString('id-ID', { weekday: 'short' })}</span>
                         <span className="text-sm leading-tight">{parseLocalISODate(date).getDate()}</span>
@@ -141,7 +126,15 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedEmployees.map((emp) => {
+                {sortedEmployees.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={weeklyDatesList.length + 2} className="py-12 text-center">
+                      <p className="text-sm font-semibold text-slate-500">Belum ada data pegawai</p>
+                      <p className="text-[11px] text-slate-500 mt-1">Tambahkan pegawai di menu Data</p>
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                sortedEmployees.map((emp) => {
                   const isTop = weeklyStats.top3Ids?.includes(emp.id);
                   const isBottom = weeklyStats.bottom3Ids?.includes(emp.id);
                   const rowClass = isTop ? "bg-emerald-50/80 border-b border-emerald-200" : isBottom ? "bg-red-50/80 border-b border-red-200" : "hover:bg-slate-50/30 transition-colors border-b border-slate-50";
@@ -179,7 +172,8 @@ export function WeeklyReportView(props: WeeklyReportViewProps) {
                       </TableCell>
                     </TableRow>
                   );
-                })}
+                })
+                )}
               </TableBody>
             </Table>
           </div>

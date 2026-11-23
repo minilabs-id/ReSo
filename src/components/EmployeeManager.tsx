@@ -8,11 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { Table, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Trash2, UserPlus, Save, X, Download, Upload, FileSpreadsheet, Users, Instagram, Facebook, User, CreditCard, UserCircle, Search, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { TiktokIcon } from './icons/TiktokIcon';
-import { toast } from 'sonner';
+import { toast } from '../lib/notify';
 import { useAuth, LOCAL_OPERATOR } from './LocalProvider';
-import { motion, AnimatePresence, type Variants } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { cn, getBidangColor } from '@/lib/utils';
 import { useDialogA11y } from '../hooks/useDialogA11y';
+import { containerVariants, itemVariants } from '../shared/motion';
 
 enum OperationType {
   CREATE = 'create',
@@ -68,7 +69,7 @@ const EmployeeRow = React.memo(({ emp, index, onEdit, onDelete }: { emp: Employe
       <TableCell className="pl-6 py-3">
         <div className="flex items-center gap-3">
           <motion.div 
-            className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-400 font-mono font-bold text-[11px]"
+            className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500 font-mono font-bold text-[11px]"
           >
             {index + 1}
           </motion.div>
@@ -107,7 +108,7 @@ const EmployeeRow = React.memo(({ emp, index, onEdit, onDelete }: { emp: Employe
             variant="secondary" 
             size="icon" 
             onClick={() => onEdit(emp)} 
-            className="bg-white border border-slate-200 text-slate-400 hover:text-slate-900 h-8 w-8 rounded-xl transition-all "
+            className="bg-white border border-slate-200 text-slate-500 hover:text-slate-900 h-8 w-8 rounded-xl transition-all "
             title="Edit"
           >
             <UserCircle size={14} />
@@ -116,7 +117,7 @@ const EmployeeRow = React.memo(({ emp, index, onEdit, onDelete }: { emp: Employe
             variant="ghost" 
             size="icon" 
             onClick={() => onDelete(emp.id)} 
-            className="h-8 w-8 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600 transition-all"
+            className="h-8 w-8 rounded-xl hover:bg-red-50 text-slate-500 hover:text-red-600 transition-all"
             title="Hapus"
           >
             <Trash2 size={14} />
@@ -128,28 +129,6 @@ const EmployeeRow = React.memo(({ emp, index, onEdit, onDelete }: { emp: Employe
 });
 
 EmployeeRow.displayName = 'EmployeeRow';
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.02
-    }
-  }
-};
-
-const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 8 },
-  visible: { 
-    opacity: 1, 
-    y: 0,
-    transition: {
-      type: "tween",
-      duration: 0.15
-    }
-  }
-};
 
 interface EmployeeManagerProps {
   /** Master pegawai dari listener tunggal di EngagementDashboard (anti listener ganda). */
@@ -607,28 +586,34 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
   if (!db) return null;
 
   return (
-    <div className="space-y-6 md:space-y-8">
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-4 md:p-5 rounded-xl border border-slate-200">
-        <div className="flex flex-col xl:flex-row gap-4 w-full xl:w-auto xl:ml-auto">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input 
-              placeholder="Cari nama pegawai..." 
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">Data Pegawai</h1>
+        <p className="text-xs text-slate-500 mt-0.5">Master pegawai & akun media sosial untuk pencocokan rekap</p>
+      </div>
+
+      <div className="flex items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200">
+        <div className="flex items-center gap-4">
+          <div className="relative w-72">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+            <Input
+              placeholder="Cari nama, NIP, bidang, akun…"
+              aria-label="Cari pegawai"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 text-xs rounded-xl bg-slate-50 border-transparent focus:bg-white transition-all font-medium"
             />
           </div>
-          <div className="flex flex-wrap gap-2 w-full xl:w-auto">
-            <Button variant="outline" onClick={downloadTemplate} className="flex-1 md:flex-none gap-2 border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={downloadTemplate} className="gap-2 border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold">
               <FileSpreadsheet size={14} className="text-emerald-600" />
               Template
             </Button>
-            <Button variant="outline" onClick={exportData} className="flex-1 md:flex-none gap-2 border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold">
+            <Button variant="outline" onClick={exportData} className="gap-2 border-slate-200 hover:bg-slate-50 text-slate-600 text-xs font-bold">
               <Download size={14} className="text-blue-600" />
               Export
             </Button>
-            <div className="relative flex-1 md:flex-none">
+            <div className="relative">
               <Input 
                 type="file" 
                 accept=".csv, .xlsx, .xls" 
@@ -651,13 +636,8 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
             </div>
             {!isAdding && (
               <Button 
-                onClick={() => {
-                  setIsAdding(true);
-                  setTimeout(() => {
-                    document.getElementById('employee-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }, 100);
-                }} 
-                className="w-full md:w-auto gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
+                onClick={() => setIsAdding(true)}
+                className="gap-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold"
               >
                 <UserPlus size={14} />
                 Tambah
@@ -691,7 +671,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                     variant="ghost" 
                     size="icon" 
                     onClick={resetForm} 
-                    className="rounded-full hover:bg-slate-100 text-slate-400 h-8 w-8"
+                    className="rounded-full hover:bg-slate-100 text-slate-500 h-8 w-8"
                     aria-label="Tutup form"
                     title="Tutup form"
                   >
@@ -705,7 +685,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 ml-1">Nama Lengkap</label>
                       <div className="relative group">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-900 transition-colors">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-slate-900 transition-colors">
                           <User size={14} />
                         </div>
                         <Input 
@@ -720,7 +700,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 ml-1">NIP</label>
                       <div className="relative group">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-900 transition-colors">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-slate-900 transition-colors">
                           <CreditCard size={14} />
                         </div>
                         <Input 
@@ -734,7 +714,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 ml-1">Bidang / Unit Kerja</label>
                       <div className="relative group">
-                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-900 transition-colors">
+                        <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-slate-900 transition-colors">
                           <Users size={14} />
                         </div>
                         <input
@@ -742,7 +722,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                           placeholder="Cari atau ketik bidang baru..."
                           value={formData.bidang}
                           onChange={(e) => setFormData({...formData, bidang: e.target.value})}
-                          className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 pl-10 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
+                          className="flex h-10 w-full rounded-xl border border-slate-200 bg-white px-3 pl-10 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-slate-300 disabled:cursor-not-allowed disabled:opacity-50"
                         />
                         <datalist id="bidang-options">
                           {bidangOptions.map((b) => <option key={b} value={b} />)}
@@ -751,11 +731,11 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                     </div>
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 ml-1">
-                        Instagram <span className="text-[9px] font-normal text-slate-400 normal-case">(utama & ke-2)</span>
+                        Instagram <span className="text-[11px] font-normal text-slate-500 normal-case">(utama & ke-2)</span>
                       </label>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="relative group">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-pink-500 transition-colors">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-pink-500 transition-colors">
                             <Instagram size={14} />
                           </div>
                           <Input 
@@ -766,7 +746,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                           />
                         </div>
                         <div className="relative group">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-pink-500 transition-colors">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-pink-500 transition-colors">
                             <Instagram size={14} />
                           </div>
                           <Input 
@@ -780,11 +760,11 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                     </div>
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 ml-1">
-                        Facebook <span className="text-[9px] font-normal text-slate-400 normal-case">(utama & ke-2)</span>
+                        Facebook <span className="text-[11px] font-normal text-slate-500 normal-case">(utama & ke-2)</span>
                       </label>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="relative group">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500 transition-colors">
                             <Facebook size={14} />
                           </div>
                           <Input 
@@ -795,7 +775,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                           />
                         </div>
                         <div className="relative group">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-blue-500 transition-colors">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-blue-500 transition-colors">
                             <Facebook size={14} />
                           </div>
                           <Input 
@@ -809,11 +789,11 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                     </div>
                     <div className="space-y-1.5 md:col-span-2">
                       <label className="text-xs font-semibold uppercase tracking-wider text-slate-500 ml-1">
-                        TikTok <span className="text-[9px] font-normal text-slate-400 normal-case">(utama & ke-2)</span>
+                        TikTok <span className="text-[11px] font-normal text-slate-500 normal-case">(utama & ke-2)</span>
                       </label>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="relative group">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-800 transition-colors">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-slate-800 transition-colors">
                             <TiktokIcon size={14} />
                           </div>
                           <Input 
@@ -824,7 +804,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                           />
                         </div>
                         <div className="relative group">
-                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-800 transition-colors">
+                          <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 group-focus-within:text-slate-800 transition-colors">
                             <TiktokIcon size={14} />
                           </div>
                           <Input 
@@ -863,15 +843,14 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
 
       <Card className="rounded-xl border-slate-200  overflow-hidden bg-white">
         <CardContent className="p-0">
-          {/* Desktop Table - Hidden on small screens */}
-          <div className="hidden md:block">
+          <div>
             <div className="overflow-x-auto overflow-y-auto max-h-[70vh]">
               <div className="min-w-[800px]">
                 <Table>
                   <TableHeader className="bg-slate-50/50 sticky top-0 z-10">
                     <TableRow className="hover:bg-transparent border-slate-200">
                       <TableHead 
-                        className="pl-6 py-4 font-bold text-slate-400 uppercase tracking-widest text-[11px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
+                        className="pl-6 py-4 font-bold text-slate-500 uppercase tracking-widest text-[11px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
                         onClick={() => handleSort('name')}
                       >
                         <div className="flex items-center">
@@ -879,7 +858,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                         </div>
                       </TableHead>
                       <TableHead 
-                        className="font-bold text-slate-400 uppercase tracking-widest text-[11px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
+                        className="font-bold text-slate-500 uppercase tracking-widest text-[11px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
                         onClick={() => handleSort('bidang')}
                       >
                         <div className="flex items-center">
@@ -887,15 +866,15 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                         </div>
                       </TableHead>
                       <TableHead 
-                        className="font-bold text-slate-400 uppercase tracking-widest text-[11px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
+                        className="font-bold text-slate-500 uppercase tracking-widest text-[11px] bg-slate-50 cursor-pointer hover:text-slate-700 select-none group transition-colors"
                         onClick={() => handleSort('nip')}
                       >
                         <div className="flex items-center">
                           Identitas (NIP) <SortIcon field="nip" />
                         </div>
                       </TableHead>
-                      <TableHead className="font-bold text-slate-400 uppercase tracking-widest text-[11px] bg-slate-50">Sosial Media</TableHead>
-                      <TableHead className="text-right pr-6 font-bold text-slate-400 uppercase tracking-widest text-[11px] bg-slate-50">Aksi</TableHead>
+                      <TableHead className="font-bold text-slate-500 uppercase tracking-widest text-[11px] bg-slate-50">Sosial Media</TableHead>
+                      <TableHead className="text-right pr-6 font-bold text-slate-500 uppercase tracking-widest text-[11px] bg-slate-50">Aksi</TableHead>
                     </TableRow>
                   </TableHeader>
                   <motion.tbody 
@@ -906,10 +885,21 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                   >
                     {paginatedEmployees.length === 0 ? (
                       <motion.tr variants={itemVariants} className="border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted">
-                        <TableCell colSpan={5} className="h-48 text-center text-slate-400">
+                        <TableCell colSpan={5} className="h-48 text-center text-slate-500">
                           <div className="flex flex-col items-center gap-2">
                             <Users size={24} className="opacity-20" />
-                            <p className="text-xs font-medium">Belum ada data pegawai</p>
+                            <p className="text-xs font-medium">
+                              {searchQuery.trim() ? 'Tidak ada pegawai yang cocok' : 'Belum ada data pegawai'}
+                            </p>
+                            {searchQuery.trim() && (
+                              <button
+                                type="button"
+                                onClick={() => setSearchQuery('')}
+                                className="text-[11px] font-bold text-slate-700 underline underline-offset-2 hover:text-slate-900"
+                              >
+                                Hapus pencarian
+                              </button>
+                            )}
                           </div>
                         </TableCell>
                       </motion.tr>
@@ -927,85 +917,6 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
                   </motion.tbody>
                 </Table>
               </div>
-            </div>
-          </div>
-
-          {/* Mobile Card Layout - Shown on small screens */}
-          <div className="md:hidden">
-            <div className="divide-y divide-slate-100">
-              {paginatedEmployees.length === 0 ? (
-                <div className="px-6 py-12 text-center text-slate-400 space-y-2">
-                  <Users size={32} className="mx-auto opacity-20" />
-                  <p className="text-xs font-medium">Belum ada data pegawai</p>
-                </div>
-              ) : (
-                paginatedEmployees.map((emp, index) => (
-                  <motion.div 
-                    key={emp.id}
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="p-5 space-y-4"
-                  >
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="flex gap-3 flex-1 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 font-bold text-xs shrink-0 tracking-tighter">
-                          {(page - 1) * pageSize + index + 1}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-slate-900 text-sm whitespace-normal line-clamp-2 leading-tight">{emp.name}</h4>
-                          <code className="text-[11px] text-slate-400 font-mono mt-1 block truncate">{emp.nip}</code>
-                        </div>
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <Button 
-                          variant="secondary" 
-                          size="icon" 
-                          onClick={() => startEdit(emp)} 
-                          className={cn(
-                            "h-10 w-10 rounded-xl transition-all active:scale-95",
-                            editingId === emp.id ? "bg-slate-900 text-white " : "bg-white border border-slate-200 text-slate-500"
-                          )}
-                          title="Edit"
-                        >
-                          <UserCircle size={18} />
-                        </Button>
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => confirmDelete(emp.id)}
-                          className="h-10 w-10 rounded-xl hover:bg-red-50 text-slate-400 hover:text-red-600 active:scale-90 transition-transform"
-                          aria-label="Hapus"
-                          title="Hapus"
-                        >
-                          <Trash2 size={18} />
-                        </Button>
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col gap-2 pt-2 border-t border-slate-50 mt-2">
-                      <div className="flex">
-                        <span className={cn("text-[11px] font-bold px-2.5 py-1 rounded-full uppercase tracking-wider", getBidangColor(emp.bidang))}>
-                          {emp.bidang || 'N/A'}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-1.5 pt-1">
-                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
-                          <Instagram size={13} className={emp.igUsername || emp.igUsername2 ? "text-pink-500 shrink-0" : "text-slate-300 shrink-0"} />
-                          <span className="truncate">{emp.igUsername || '-'}{emp.igUsername2 ? ` · ${emp.igUsername2}` : ''}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
-                          <Facebook size={13} className={emp.fbName || emp.fbName2 ? "text-blue-500 shrink-0" : "text-slate-300 shrink-0"} />
-                          <span className="truncate">{emp.fbName || '-'}{emp.fbName2 ? ` · ${emp.fbName2}` : ''}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500">
-                          <TiktokIcon size={13} className={emp.tiktokName || emp.tiktokName2 ? "text-slate-800 shrink-0" : "text-slate-300 shrink-0"} />
-                          <span className="truncate">{emp.tiktokName || '-'}{emp.tiktokName2 ? ` · ${emp.tiktokName2}` : ''}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))
-              )}
             </div>
           </div>
 

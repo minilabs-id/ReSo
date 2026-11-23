@@ -12,7 +12,6 @@ import {
   mergeUniqueLines,
   MatchableEmployee,
 } from './matching';
-import { buildEngagementPatch, isValidDateStr, isValidPostedAt, mergePostedAt, isDateTooFarFuture, dinasUid } from './engagement-api';
 
 const EMPLOYEES: MatchableEmployee[] = [
   { id: 'e1', name: 'Budi Santoso', fbName: 'Budi Santoso', igUsername: 'budi_s', tiktokName: '@budi_s', aliases: [] },
@@ -128,75 +127,4 @@ it('STRESS: matchEngagementDetail — null/undefined input', () => {
   assert.deepEqual(matchEngagementDetail(null as unknown as string, EMPLOYEES, 'fb'), { matchedIds: [], unmatched: [] });
   assert.deepEqual(matchEngagementDetail(undefined as unknown as string, EMPLOYEES, 'fb'), { matchedIds: [], unmatched: [] });
   assert.deepEqual(matchEngagementDetail('', EMPLOYEES, 'fb'), { matchedIds: [], unmatched: [] });
-});
-
-// ===================== 5. engagement-api — buildEngagementPatch =====================
-
-it('STRESS: buildEngagementPatch — existing null, names raksasa', () => {
-  const names = Array.from({ length: 10_000 }, (_, i) => `Nama User ${i}`);
-  const r = buildEngagementPatch(null, 'facebook', names, EMPLOYEES, '2026-08-23');
-  assert.ok(r, 'return objek dengan existing null');
-  assert.ok(String(r.patch.fbRawText).includes('Nama User 0'), 'raw text tersimpan');
-});
-
-it('STRESS: buildEngagementPatch — names non-array / null / undefined', () => {
-  assert.equal(buildEngagementPatch(null, 'facebook', null, EMPLOYEES, '2026-08-23'), null);
-  assert.equal(buildEngagementPatch(null, 'facebook', 'string', EMPLOYEES, '2026-08-23'), null);
-  assert.equal(buildEngagementPatch(null, 'facebook', [123, {}, null], EMPLOYEES, '2026-08-23'), null);
-});
-
-it('STRESS: buildEngagementPatch — platform invalid', () => {
-  // @ts-expect-error — platform invalid
-  const r = buildEngagementPatch(null, 'invalid', ['Andi'], EMPLOYEES, '2026-08-23');
-  assert.equal(r, null, 'platform invalid → null');
-});
-
-it('STRESS: buildEngagementPatch — employees kosong / null', () => {
-  const r = buildEngagementPatch(null, 'facebook', ['Andi'], [], '2026-08-23');
-  assert.equal(r, null, 'employees kosong → null');
-  assert.equal(buildEngagementPatch(null, 'facebook', ['Andi'], null, '2026-08-23'), null);
-});
-
-it('STRESS: dinasUid — mixed case / null / undefined', () => {
-  assert.equal(dinasUid('eeWzyza6xvcBKcmucxMidMBTmOw1'), 'eewzyza6xvcbkcmucxmidmbtmow1');
-  assert.equal(dinasUid('ABC-123'), 'abc-123');
-  assert.equal(dinasUid(null as unknown as string), '');
-  assert.equal(dinasUid(undefined as unknown as string), '');
-});
-
-it('STRESS: isValidDateStr — fuzz tanggal', () => {
-  for (let i = 0; i < 10_000; i++) {
-    const y = Math.floor(Math.random() * 10000) - 1;
-    const m = Math.floor(Math.random() * 30) - 1;
-    const d = Math.floor(Math.random() * 60) - 1;
-    const s = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-    const r = isValidDateStr(s);
-    assert.equal(typeof r, 'boolean', 'return boolean: ' + s);
-  }
-});
-
-it('STRESS: isValidPostedAt — fuzz', () => {
-  for (let i = 0; i < 10_000; i++) {
-    const s = `${Math.floor(Math.random() * 100000)}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 100)}T${Math.floor(Math.random() * 100)}:${Math.floor(Math.random() * 100)}`;
-    const r = isValidPostedAt(s);
-    assert.equal(typeof r, 'boolean', 'return boolean: ' + s);
-  }
-});
-
-it('STRESS: mergePostedAt — 10.000 append', () => {
-  let arr: string[] | undefined;
-  for (let i = 0; i < 10_000; i++) {
-    const iso = `2026-08-23T${String(i % 24).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}`;
-    arr = mergePostedAt(arr, iso);
-  }
-  assert.ok(Array.isArray(arr) && arr.length > 0, 'append 10.000 postedAt');
-});
-
-it('STRESS: isDateTooFarFuture — fuzz', () => {
-  const now = new Date('2026-08-23T00:00:00Z');
-  for (let i = 0; i < 1000; i++) {
-    const s = `2026-08-${String((i % 28) + 1).padStart(2, '0')}`;
-    const r = isDateTooFarFuture(s, now);
-    assert.equal(typeof r, 'boolean', 'return boolean: ' + s);
-  }
 });

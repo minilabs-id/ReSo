@@ -36,21 +36,10 @@ export interface NameState {
   updatedAt: number
   stopReason: StopReason | null
   includeReplies: boolean
-  hasTemplate: boolean
   runId: string | null
   /** Hint post/video (ditampilkan sebagai "Target:"). */
   postHint: string
   videoHint: string
-}
-
-export interface FbFeedbackCandidate {
-  /** Kandidat id (urut prioritas). */
-  ids: string[]
-}
-
-export interface PlatformGroup {
-  platform: Platform
-  names: string[]
 }
 
 export interface TemplateMeta {
@@ -106,9 +95,6 @@ export interface DailyEngagement {
   igEngagedEmployeeIds?: string[]
   fbEngagedEmployeeIds?: string[]
   tiktokEngagedEmployeeIds?: string[]
-  igLinks?: string[]
-  fbLinks?: string[]
-  tiktokLinks?: string[]
   updatedAt?: string | null
   /** Diisi otomatis oleh scraper native (pengganti penanda ekstensi). */
   autoFilledAt?: string | null

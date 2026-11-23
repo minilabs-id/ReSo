@@ -21,6 +21,7 @@ import { runTikTokCapture, sanitizeTikTokTemplateForRun } from './engine-tiktok'
 import { runSocialCapture } from './engine-social'
 import type { CaptureRequest } from './engine-tiktok-logic'
 import type { Platform } from '../../src/shared/types'
+import { plausibleScrapeTarget } from '../../src/shared/platform'
 
 /** Sinyal stop yang diharapkan engine (cukup pakai `aborted`-nya saja). */
 type StopSignal = { readonly aborted: boolean }
@@ -131,10 +132,7 @@ async function execute(
 
   // ===================== Facebook / Instagram =====================
   if (platform === 'facebook' || platform === 'instagram') {
-    const postUrl =
-      platform === 'facebook'
-        ? plausibleFacebookPostUrl(hostUrl)
-        : plausibleInstagramPostUrl(hostUrl)
+    const postUrl = plausibleScrapeTarget(hostUrl, platform) ? hostUrl : null
 
     if (!postUrl) {
       fail(
@@ -144,6 +142,9 @@ async function execute(
       )
       return
     }
+
+    // Tampilkan target yang sedang diproses di panel (sebelumnya selalu kosong).
+    dispatch({ type: 'SET_TARGET', hint: postUrl })
 
     const result = await runSocialCapture(host.view, platform, {
       ...settings,
@@ -175,14 +176,21 @@ async function execute(
   // ===================== TikTok =====================
   // Main membaca sendiri URL video yang sedang terbuka (dari `getHostUrl`);
   // renderer tidak perlu mengirim videoUrl. Template jadi fallback.
-  const currentVideoUrl =
-    plausibleTikTokVideoUrl(hostUrl) ?? plausibleTikTokVideoUrl(host.view.webContents.getURL())
+  const fallbackUrl = host.view.webContents.getURL()
+  const currentVideoUrl = plausibleScrapeTarget(hostUrl, 'tiktok')
+    ? hostUrl
+    : plausibleScrapeTarget(fallbackUrl, 'tiktok')
+      ? fallbackUrl
+      : null
 
   // Validasi template SEBELUM navigasi — tapi hanya bila URL video tidak ada.
   // Template invalid → FAIL, jangan loadURL.
   let templateUrl: string | null = null
   if (!currentVideoUrl && settings.tiktokTemplateUrl) {
-    templateUrl = sanitizeTikTokTemplateForRun(settings.tiktokTemplateUrl)
+    templateUrl = sanitizeTikTokTemplateForRun(
+      settings.tiktokTemplateUrl,
+      settings.tiktokTemplateCapturedAt
+    )
     if (!templateUrl) {
       fail('Template TikTok tidak valid — periksa URL template di Pengaturan.')
       return
@@ -196,8 +204,11 @@ async function execute(
     return
   }
 
+  dispatch({ type: 'SET_TARGET', hint: currentVideoUrl ?? templateUrl ?? '' })
+
   const req: CaptureRequest = {
     templateUrl,
+    templateCapturedAt: settings.tiktokTemplateCapturedAt,
     videoUrl: currentVideoUrl,
     includeReplies,
     maxScrollRounds: settings.maxScrollRounds,
@@ -237,52 +248,5 @@ function currentHostUrl(platform: Platform): string {
     return getHostUrl(platform) || ''
   } catch {
     return ''
-  }
-}
-
-/**
- * Hanya terima URL halaman Facebook/fb yang wajar. Pola postingan umum:
- * `/posts/`, `/permalink.php`, `/reel/`, `/photo/` — tapi domain facebook/fb
- * dengan path apa pun tetap diterima (operator bisa saja membuka varian URL).
- */
-function plausibleFacebookPostUrl(url: unknown): string | null {
-  if (typeof url !== 'string' || !url) return null
-  try {
-    const u = new URL(url)
-    const h = u.hostname.toLowerCase()
-    if (!h.endsWith('facebook.com') && !h.endsWith('fb.com')) return null
-    if (u.pathname.toLowerCase().includes('/login')) return null
-    return u.toString()
-  } catch {
-    return null
-  }
-}
-
-/** Hanya terima URL postingan Instagram (/p/, /reel/, /tv/) di domain instagram.com. */
-function plausibleInstagramPostUrl(url: unknown): string | null {
-  if (typeof url !== 'string' || !url) return null
-  try {
-    const u = new URL(url)
-    const h = u.hostname.toLowerCase()
-    if (!h.endsWith('instagram.com')) return null
-    const p = u.pathname
-    if (!['/p/', '/reel/', '/tv/'].some((seg) => p.includes(seg))) return null
-    return u.toString()
-  } catch {
-    return null
-  }
-}
-
-/** Hanya terima URL halaman video/foto TikTok yang wajar (bukan feed/login/api). */
-function plausibleTikTokVideoUrl(url: unknown): string | null {
-  if (typeof url !== 'string' || !url) return null
-  try {
-    const u = new URL(url)
-    if (!u.hostname.endsWith('tiktok.com')) return null
-    if (!/\/(video|photo)\//.test(u.pathname)) return null
-    if (u.pathname.toLowerCase().includes('/login')) return null
-    return u.toString()
-  } catch {
-    return null
   }
 }

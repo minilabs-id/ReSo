@@ -8,18 +8,8 @@
   --font-sans: "Geist Variable", ui-sans-serif, system-ui, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --color-slate-50: hsl(210 40% 98%);
-  --color-slate-100: hsl(210 40% 96.1%);
-  --color-slate-200: hsl(214.3 31.8% 91.4%);
-  --color-slate-300: hsl(212.7 26.8% 83.9%);
-  --color-slate-400: hsl(215 20.2% 65.1%);
-  --color-slate-500: hsl(215.4 16.3% 46.9%);
-  --color-slate-600: hsl(215.3 19.3% 34.5%);
-  --color-slate-700: hsl(215.3 25% 26.7%);
-  --color-slate-800: hsl(217.2 32.6% 17.5%);
-  --color-slate-900: hsl(222.2 47.4% 11.2%);
-  --color-slate-950: hsl(222.2 84% 4.9%);
-  
+  /* slate memakai palette bawaan Tailwind — jangan didefinisikan ulang di sini.
+     Satu sumber warna semantik ada di :root + @theme inline di bawah. */
   --color-pink-400: hsl(322.1 75% 64.1%);
   --color-pink-500: hsl(322.1 75% 50%);
   
@@ -77,8 +67,6 @@
   --font-size-lg: 1.125rem;
   --font-size-xl: 1.25rem;
   --font-size-2xl: 1.5rem;
-  /* bottom nav height for offsets */
-  --bottom-nav-h: calc(5rem + env(safe-area-inset-bottom, 0px));
 }
 
 * {
@@ -97,17 +85,6 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Safe areas + bottom nav spacing (iOS PWA) */
-.pb-bottom-nav {
-  padding-bottom: calc(var(--bottom-nav-h) + 0.5rem);
-}
-.pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
-}
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom, 0px);
-}
-
 /* Reduced motion: kill decorative transforms */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -119,8 +96,6 @@ body {
     scroll-behavior: auto !important;
   }
 }
-
-@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --font-heading: var(--font-sans);

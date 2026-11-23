@@ -1,39 +1,29 @@
-import { app, BrowserWindow, ipcMain, safeStorage, session, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
-import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseMetaPath, parseBrowserBounds } from './ipc/contracts'
+import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseBrowserBounds } from './ipc/contracts'
 import { getSettings, setSettings, resetSettings } from './store/settings-store'
 import { runController, setScrapeMainWindow } from './ipc/run-controller'
-import { getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, notifyScrapClick, onScrapClick, platformForContents, setHostBounds, showHost, verifyScrapClick } from './scrape/scraper-host'
+import { getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, notifyScrapClick, onScrapClick, platformForContents, setHostBounds, showHost } from './scrape/scraper-host'
 import { newRunId } from '../src/shared/state'
+import { isAllowedScrapeUrl } from '../src/shared/platform'
 import type { Platform } from '../src/shared/types'
 import * as db from './db/database'
 
 const isDev = !app.isPackaged
 let mainWindow: BrowserWindow | null = null
-/** Opsi terakhir dari UI — dipakai saat tombol Scrap di halaman ditekan. */
-const lastIncludeReplies: Record<Platform, boolean> = {
-  facebook: false,
-  tiktok: false,
-  instagram: false,
-}
+/** Debounce klik tombol Scrap in-page (ms) — cegah START bertumpuk. */
+const lastScrapClickAt = new Map<Platform, number>()
 
 function isHttp(url: string): boolean {
   return url.startsWith('http://') || url.startsWith('https://')
 }
 
-/** Key yang isinya rahasia — tidak pernah dikembalikan ke renderer lewat bridge umum. */
-const SECRET_SETTING_KEYS = new Set(['meta_api'])
-
+/** Preferensi disimpan sebagai JSON biasa — tidak ada lagi secret di sini. */
 function readSettingValue(key: string): unknown {
   const raw = db.getSetting(key)
   if (raw === null) return null
   try {
-    if (raw.startsWith('enc:')) {
-      const plain = safeStorage.decryptString(Buffer.from(raw.slice(4), 'base64'))
-      return JSON.parse(plain) as unknown
-    }
-    // Format lama (plaintext) tetap terbaca sampai ditulis ulang.
     return JSON.parse(raw) as unknown
   } catch {
     return raw
@@ -41,19 +31,7 @@ function readSettingValue(key: string): unknown {
 }
 
 function writeSettingValue(key: string, value: unknown): void {
-  const text = JSON.stringify(value ?? null)
-  if (SECRET_SETTING_KEYS.has(key) && safeStorage.isEncryptionAvailable()) {
-    db.setSetting(key, `enc:${safeStorage.encryptString(text).toString('base64')}`)
-  } else {
-    db.setSetting(key, text)
-  }
-}
-
-function metaToken(): string {
-  const value = readSettingValue('meta_api')
-  if (!value || typeof value !== 'object') return ''
-  const token = (value as { value?: unknown }).value
-  return typeof token === 'string' ? token.trim() : ''
+  db.setSetting(key, JSON.stringify(value ?? null))
 }
 
 /** Hanya jendela utama yang boleh memanggil IPC — pertahanan berlapis. */
@@ -143,37 +121,17 @@ function createWindow(): BrowserWindow {
 }
 
 function registerIpc(): void {
-  safeHandle(IPC.appGetMeta, () => ({
-    version: app.getVersion(),
-    platform: process.platform,
-    electron: true,
-  }))
-
   // Pengaturan (JSON store). Payload renderer DIVALIDASI di settings-store.
   safeHandle(IPC.settingsGet, () => getSettings())
   safeHandle(IPC.settingsSet, (_event, patch: unknown) => setSettings(patch))
   safeHandle(IPC.settingsReset, () => resetSettings())
 
   // State scraping (main process = pemilik tunggal).
-  safeHandle(IPC.scrapeGetState, (_event, platform: unknown) =>
-    isPlatform(platform) ? runController.get(platform) : null
-  )
   safeHandle(IPC.scrapeGetAll, () => runController.getAll())
   safeHandle(IPC.scrapeApplyEvent, (_event, platform: unknown, event: unknown) => {
     if (!isPlatform(platform)) return null
-    if (event && typeof event === 'object' && (event as { type?: unknown }).type === 'START') {
-      const inc = (event as { includeReplies?: unknown }).includeReplies
-      lastIncludeReplies[platform] = inc === true
-    }
     return runController.apply(platform, event)
   })
-  safeHandle(IPC.scrapeClearNames, (_event, platform: unknown) =>
-    isPlatform(platform) ? runController.clearNames(platform) : null
-  )
-  safeHandle(IPC.scrapeReset, (_event, platform: unknown) =>
-    isPlatform(platform) ? runController.reset(platform) : null
-  )
-
   // Browser internal yang terlihat + tombol Scrap di halaman postingan.
   safeHandle(IPC.scrapeOpenBrowser, (_event, platform: unknown, bounds: unknown) => {
     if (!isPlatform(platform)) return false
@@ -194,12 +152,10 @@ function registerIpc(): void {
   })
   safeHandle(IPC.scrapeNavigate, (_event, platform: unknown, url: unknown) => {
     if (!isPlatform(platform) || typeof url !== 'string') return false
+    if (!isAllowedScrapeUrl(url, platform)) return false
     loadHost(platform, url)
     return true
   })
-  safeHandle(IPC.scrapeGetUrl, (_event, platform: unknown) =>
-    isPlatform(platform) ? getHostUrl(platform) : ''
-  )
   safeHandle(IPC.scrapeBrowserBack, (_event, platform: unknown) => {
     if (!isPlatform(platform)) return false
     navigateHost(platform, 'back')
@@ -218,11 +174,21 @@ function registerIpc(): void {
   safeHandle(IPC.scrapeBrowserNavState, (_event, platform: unknown) =>
     isPlatform(platform) ? hostNavState(platform) : { canBack: false, canForward: false }
   )
+  safeHandle(IPC.scrapeBrowserGetUrl, (_event, platform: unknown) =>
+    isPlatform(platform) ? getHostUrl(platform) : ''
+  )
 
-  // Klik tombol Scrap dari halaman: verifikasi nonce + asal webContents.
-  ipcMain.on(IPC.scrapClick, (event, nonce: unknown) => {
+  // Klik tombol Scrap dari halaman: verifikasi asal, nonce, domain, & debounce.
+  ipcMain.on(IPC.scrapClick, (event) => {
+    // Hanya WebContents host scraper yang boleh memicu; nonce tidak dipakai
+    // karena halaman SPA menggantinya setelah tombol di-mount.
     const platform = platformForContents(event.sender)
-    if (!platform || !verifyScrapClick(platform, nonce)) return
+    if (!platform) return
+    // Halaman bisa berpindah ke domain asing setelah tombol di-mount — tolak.
+    if (!isAllowedScrapeUrl(getHostUrl(platform), platform)) return
+    const now = Date.now()
+    if (now - (lastScrapClickAt.get(platform) ?? 0) < 2000) return
+    lastScrapClickAt.set(platform, now)
     notifyScrapClick(platform)
   })
 
@@ -234,13 +200,6 @@ function registerIpc(): void {
     const employee = db.upsertEmployee(emp)
     broadcastDbChanged()
     return { ok: true as const, employee }
-  })
-  safeHandle(IPC.dbReplaceEmployees, (_event, payload: unknown) => {
-    const list = parseEmployeeList(payload)
-    if (!list) return { ok: false as const, reason: 'invalid-list' }
-    const employees = db.replaceAllEmployees(list)
-    broadcastDbChanged()
-    return { ok: true as const, employees }
   })
   safeHandle(IPC.dbDeleteEmployee, (_event, id: unknown) => {
     const key = typeof id === 'string' ? id.trim() : ''
@@ -273,10 +232,6 @@ function registerIpc(): void {
   safeHandle(IPC.dbGetSetting, (_event, key: unknown) => {
     const k = parseSettingKey(key)
     if (!k) return null
-    if (SECRET_SETTING_KEYS.has(k)) {
-      // Jangan pernah mengirim token ke renderer lewat bridge umum.
-      return metaToken() ? { configured: true, value: '' } : null
-    }
     return readSettingValue(k)
   })
   safeHandle(IPC.dbSetSetting, (_event, key: unknown, value: unknown) => {
@@ -299,8 +254,6 @@ function registerIpc(): void {
   safeHandle(IPC.dbExportAll, () => {
     const settings: Record<string, unknown> = {}
     for (const key of db.listSettingKeys()) settings[key] = readSettingValue(key)
-    // Cadangan bergerak bersama token Meta yang sudah didekripsi — operator
-    // wajib menyimpannya di lokasi terlindungi.
     return { ...db.exportAll(), settings, schemaVersion: 1 }
   })
   safeHandle(IPC.dbImportAll, (_event, payload: unknown) => {
@@ -382,32 +335,6 @@ function registerIpc(): void {
     broadcastDbChanged()
     return { ok: true as const }
   })
-
-  // Token Meta tidak pernah dikirim ke renderer: status + proxy fetch dari main.
-  safeHandle(IPC.metaStatus, () => ({ configured: !!metaToken() }))
-  safeHandle(IPC.metaRequest, async (_event, path: unknown, tokenOverride?: unknown) => {
-    const safePath = parseMetaPath(path)
-    if (!safePath) return { error: { message: 'Path Meta tidak valid' } }
-    const override = typeof tokenOverride === 'string' && tokenOverride.length <= 4096
-      ? tokenOverride.trim()
-      : ''
-    const token = override || metaToken()
-    if (!token) return { error: { message: 'Token Meta belum diatur' } }
-    try {
-      // /debug_token butuh input_token — diisi main dari token yang sama,
-      // tidak pernah dikirim dari renderer lewat URL.
-      const finalPath = safePath.startsWith('/debug_token')
-        ? `${safePath}?input_token=${encodeURIComponent(token)}`
-        : safePath
-      const resp = await fetch(`https://graph.facebook.com/v19.0${finalPath}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(60000),
-      })
-      return await resp.json() as unknown
-    } catch (err) {
-      return { error: { message: err instanceof Error ? err.message : 'Gagal menghubungi Meta' } }
-    }
-  })
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -421,14 +348,18 @@ function hardenSession(): void {
 }
 
 app.whenReady().then(() => {
+  // Bersihkan sisa pengaturan lama dari database.
+  db.deleteSetting('meta_api')
   hardenSession()
   registerIpc()
   // Tombol "Scrap" yang di-inject ke halaman memicu run platform itu.
   onScrapClick((platform) => {
+    // Satu sumber kebenaran: opsi dari state yang sudah disetel renderer lewat
+    // event SET_OPTIONS — bukan variabel bayangan di main process.
     runController.apply(platform, {
       type: 'START',
       runId: newRunId(),
-      includeReplies: lastIncludeReplies[platform],
+      includeReplies: runController.get(platform).includeReplies,
     })
   })
   createWindow()
@@ -463,8 +394,12 @@ app.on('web-contents-created', (_event, contents) => {
     const isMain = mainWindow !== null && contents.id === mainWindow.webContents.id
     if (isMain) return // navigasi jendela utama diatur di createWindow
 
-    // WebContentsView scraper boleh navigasi ke situs sosial di session sendiri.
-    if (isScrapeHostContents(contents)) return
+    // WebContentsView scraper hanya boleh tetap di domain platformnya.
+    if (isScrapeHostContents(contents)) {
+      const platform = platformForContents(contents)
+      if (platform && !isAllowedScrapeUrl(url, platform)) event.preventDefault()
+      return
+    }
 
     event.preventDefault()
     if (isHttp(url)) void shell.openExternal(url).catch(() => {})

@@ -10,10 +10,6 @@ import type { NameState, Platform } from '../src/shared/types'
 const api = {
   platform: 'electron' as const,
 
-  app: {
-    getMeta: () => ipcRenderer.invoke(IPC.appGetMeta),
-  },
-
   /** Browser internal (WebContentsView) yang bisa dibuka/diarahkan dari UI. */
   browser: {
     openBrowser: (platform: string, bounds: unknown): Promise<boolean> =>
@@ -22,7 +18,6 @@ const api = {
     setBounds: (bounds: unknown): Promise<boolean> => ipcRenderer.invoke(IPC.scrapeSetBounds, bounds),
     navigate: (platform: string, url: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC.scrapeNavigate, platform, url),
-    getUrl: (platform: string): Promise<string> => ipcRenderer.invoke(IPC.scrapeGetUrl, platform),
     back: (platform: string): Promise<boolean> => ipcRenderer.invoke(IPC.scrapeBrowserBack, platform),
     forward: (platform: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC.scrapeBrowserForward, platform),
@@ -30,6 +25,8 @@ const api = {
       ipcRenderer.invoke(IPC.scrapeBrowserReload, platform),
     navState: (platform: string): Promise<{ canBack: boolean; canForward: boolean }> =>
       ipcRenderer.invoke(IPC.scrapeBrowserNavState, platform),
+    getUrl: (platform: string): Promise<string> =>
+      ipcRenderer.invoke(IPC.scrapeBrowserGetUrl, platform),
     onNavigated: (cb: (payload: { platform: string; url: string }) => void): (() => void) => {
       const listener = (_e: unknown, payload: { platform: string; url: string }) => cb(payload)
       ipcRenderer.on(IPC.scrapeBrowserNavigated, listener)
@@ -42,13 +39,6 @@ const api = {
     },
   },
 
-  /** Token Meta tidak pernah dikirim ke renderer — status + proxy fetch. */
-  meta: {
-    status: (): Promise<{ configured: boolean }> => ipcRenderer.invoke(IPC.metaStatus),
-    request: (path: string, tokenOverride?: string): Promise<unknown> =>
-      ipcRenderer.invoke(IPC.metaRequest, path, tokenOverride),
-  },
-
   settings: {
     get: (): Promise<ResoSettings> => ipcRenderer.invoke(IPC.settingsGet),
     set: (patch: Partial<ResoSettings>): Promise<ResoSettings> =>
@@ -57,16 +47,9 @@ const api = {
   },
 
   scrape: {
-    getState: (platform: Platform): Promise<NameState | null> =>
-      ipcRenderer.invoke(IPC.scrapeGetState, platform),
     getAll: (): Promise<Record<Platform, NameState>> => ipcRenderer.invoke(IPC.scrapeGetAll),
     applyEvent: (platform: Platform, event: unknown): Promise<NameState | null> =>
       ipcRenderer.invoke(IPC.scrapeApplyEvent, platform, event),
-    clearNames: (platform: Platform): Promise<NameState | null> =>
-      ipcRenderer.invoke(IPC.scrapeClearNames, platform),
-    reset: (platform: Platform): Promise<NameState | null> =>
-      ipcRenderer.invoke(IPC.scrapeReset, platform),
-
     /** Berlangganan siaran perubahan state; kembalikan fungsi unsubscribe. */
     onStateChanged: (
       cb: (payload: { platform: Platform; state: NameState }) => void
@@ -76,13 +59,19 @@ const api = {
       ipcRenderer.on(IPC.scrapeStateChanged, listener)
       return () => ipcRenderer.removeListener(IPC.scrapeStateChanged, listener)
     },
+
+    /** Hasil scraping otomatis masuk rekap — kabari renderer untuk toast. */
+    onHandoff: (cb: (payload: unknown) => void): (() => void) => {
+      const listener = (_e: unknown, payload: unknown): void => cb(payload)
+      ipcRenderer.on(IPC.scrapeHandoff, listener)
+      return () => ipcRenderer.removeListener(IPC.scrapeHandoff, listener)
+    },
   },
 
   /** Data lokal (SQLite) — pengganti Firestore. Payload divalidasi di main. */
   data: {
     listEmployees: () => ipcRenderer.invoke(IPC.dbListEmployees),
     upsertEmployee: (employee: unknown) => ipcRenderer.invoke(IPC.dbUpsertEmployee, employee),
-    replaceEmployees: (employees: unknown) => ipcRenderer.invoke(IPC.dbReplaceEmployees, employees),
     deleteEmployee: (id: string) => ipcRenderer.invoke(IPC.dbDeleteEmployee, id),
     getDaily: (date: string) => ipcRenderer.invoke(IPC.dbGetDaily, date),
     listDailyRange: (from: string, to: string) =>

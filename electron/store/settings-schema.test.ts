@@ -29,13 +29,11 @@ eq(sanitizeSetting('captureTimeoutMs', 5_000_000), 900_000, 'timeout terlalu bes
 eq(sanitizeSetting('tiktokTemplateUrl', '  https://www.tiktok.com/@a  '), 'https://www.tiktok.com/@a', 'url di-trim')
 eq(sanitizeSetting('tiktokTemplateUrl', 'javascript:alert(1)'), SETTINGS_DEFAULTS.tiktokTemplateUrl, 'skema ditolak')
 eq(sanitizeSetting('tiktokTemplateUrl', 'x'.repeat(3000)), SETTINGS_DEFAULTS.tiktokTemplateUrl, 'terlalu panjang ditolak')
-eq(sanitizeSetting('instagramTemplateUrl', ''), '', 'string kosong tetap kosong')
-eq(sanitizeSetting('instagramTemplateUrl', 42), SETTINGS_DEFAULTS.instagramTemplateUrl, 'non-string ditolak')
+eq(sanitizeSetting('instagramTemplateUrl', ''), null, 'instagramTemplateUrl tidak dikenal')
 
-// --- boolean ---
-eq(sanitizeSetting('launchAtLogin', true), true, 'bool diterima')
-eq(sanitizeSetting('launchAtLogin', 'true'), SETTINGS_DEFAULTS.launchAtLogin, 'string "true" ditolak')
-eq(sanitizeSetting('minimizeToTray', 0), SETTINGS_DEFAULTS.minimizeToTray, 'angka ditolak')
+// --- opsi boolean yang dulu ada sudah dihapus ---
+eq(sanitizeSetting('launchAtLogin', true), null, 'launchAtLogin tidak dikenal')
+eq(sanitizeSetting('autoSendToReso', true), null, 'autoSendToReso tidak dikenal')
 
 // --- kunci tak dikenal ---
 eq(sanitizeSetting('evilKey', 'x'), null, 'kunci tak dikenal ditolak')

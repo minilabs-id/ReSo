@@ -38,9 +38,6 @@ interface LocalAuthContextType {
   db: typeof LOCAL_DB
   loading: boolean
   error: string | null
-  provisionError: string | null
-  retryProvision: () => Promise<string | null>
-  clearError: () => void
   /** Apakah database lokal tersedia (Electron). False = build web/pratinjau. */
   hasDatabase: boolean
 }
@@ -50,9 +47,6 @@ const LocalContext = createContext<LocalAuthContextType>({
   db: LOCAL_DB,
   loading: true,
   error: null,
-  provisionError: null,
-  retryProvision: async () => null,
-  clearError: () => {},
   hasDatabase: false,
 })
 
@@ -87,10 +81,6 @@ export const LocalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       db: LOCAL_DB,
       loading,
       error,
-      provisionError: null,
-      // Provisioning Firestore sudah tidak ada; disediakan demi kompatibilitas.
-      retryProvision: async () => null,
-      clearError: () => setError(null),
       hasDatabase,
     }),
     [loading, error, hasDatabase]
@@ -101,6 +91,3 @@ export const LocalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
 /** Nama sama seperti versi Firebase supaya komponen tidak perlu diubah. */
 export const useAuth = () => useContext(LocalContext)
-
-/** True bila aplikasi berjalan tanpa database lokal (pratinjau web). */
-export const useHasDatabase = () => useContext(LocalContext).hasDatabase

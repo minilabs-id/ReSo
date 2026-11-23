@@ -24,9 +24,8 @@ interface ReportControlsProps {
   onExportExcel: () => void;
   onExportImage: () => void;
   canExportImage?: boolean;
-  /** Set to false to disable the "next period" button (e.g. future periods not available yet). */
+  /** Nonaktifkan tombol periode berikutnya (mis. periode mendatang belum ada). */
   canGoNext?: boolean;
-  /** When provided, the image-export limit note includes the current employee count. */
   employeeCount?: number;
   isLoading?: boolean;
 }
@@ -50,6 +49,7 @@ export function ReportControls({
   employeeCount,
   isLoading = false,
 }: ReportControlsProps) {
+  const noData = (employeeCount ?? 0) === 0;
   const imageLimitNote = employeeCount !== undefined
     ? `Gambar maks 60 pegawai (saat ini ${employeeCount})`
     : EXPORT_LIMIT_NOTE;
@@ -57,120 +57,120 @@ export function ReportControls({
   return (
     <motion.div
       variants={itemVariants}
-      className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 bg-white p-4 md:p-5 rounded-xl border border-slate-200 shadow-sm"
+      className="flex flex-wrap items-center justify-between gap-4 bg-white p-5 rounded-xl border border-slate-200 shadow-sm"
     >
-      <div className="flex flex-col xl:flex-row items-start xl:items-center gap-4 w-full lg:w-auto lg:ml-auto">
-        {/* Navigasi tanggal */}
-        <div className="flex items-center gap-2 md:gap-4 bg-slate-50 p-1.5 rounded-xl border border-slate-200 w-full xl:w-auto justify-between">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onPrev}
-            aria-label="Sebelumnya"
-            className="rounded-lg text-slate-600 hover:bg-white shrink-0"
-          >
-            <ChevronLeft size={16} />
-          </Button>
-          <div className="text-center px-2 md:px-4 min-w-[160px] md:min-w-[200px]">
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
-              <h2 className="text-xs sm:text-sm font-bold text-slate-900">{title}</h2>
-              {currentBadge && (
-                <Badge
-                  variant="outline"
-                  className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px] px-1.5 py-0 font-semibold"
-                >
-                  {currentBadge}
-                </Badge>
-              )}
-            </div>
-            {subtitle && (
-              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                {subtitle}
-              </p>
+      {/* Navigasi periode — satu blok, tidak bertumpuk dengan kontrol lain */}
+      <div className="flex items-center gap-2 bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onPrev}
+          aria-label="Sebelumnya"
+          className="rounded-lg text-slate-600 hover:bg-white shrink-0"
+        >
+          <ChevronLeft size={16} />
+        </Button>
+        <div className="text-center px-2 min-w-[200px]">
+          <div className="flex items-center justify-center gap-2">
+            <h2 className="text-sm font-bold text-slate-900">{title}</h2>
+            {currentBadge && (
+              <Badge
+                variant="outline"
+                className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[11px] px-1.5 py-0 font-semibold"
+              >
+                {currentBadge}
+              </Badge>
             )}
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onNext}
-            disabled={!canGoNext}
-            title={!canGoNext ? 'Periode mendatang belum tersedia' : undefined}
-            aria-label="Berikutnya"
-            className="rounded-lg text-slate-600 hover:bg-white shrink-0 disabled:opacity-40"
+          {subtitle && (
+            <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-0.5">
+              {subtitle}
+            </p>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={onNext}
+          disabled={!canGoNext}
+          title={!canGoNext ? 'Periode mendatang belum tersedia' : undefined}
+          aria-label="Berikutnya"
+          className="rounded-lg text-slate-600 hover:bg-white shrink-0 disabled:opacity-40"
+        >
+          <ChevronRight size={16} />
+        </Button>
+      </div>
+
+      {/* Urutkan + ekspor — satu baris yang sama dengan navigasi */}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+            Urutkan:
+          </span>
+          <div
+            role="group"
+            aria-label="Urutkan laporan"
+            className="flex bg-slate-100 p-1.5 rounded-xl"
           >
-            <ChevronRight size={16} />
+            {sortOptions.map((opt) => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => onSortChange(opt.value)}
+                aria-pressed={activeSort === opt.value}
+                className={cn(
+                  'px-3 py-2 text-xs font-semibold rounded-lg transition-colors',
+                  activeSort === opt.value
+                    ? 'bg-white text-slate-900 shadow-sm'
+                    : 'text-slate-500 hover:text-slate-700'
+                )}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button
+            onClick={onExportPdf}
+            disabled={isLoading || noData}
+            title={noData ? 'Belum ada data untuk diekspor' : undefined}
+            className="gap-2 px-4 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs"
+          >
+            <FileText size={14} />
+            PDF
+          </Button>
+          <Button
+            onClick={onExportExcel}
+            disabled={isLoading || noData}
+            title={noData ? 'Belum ada data untuk diekspor' : undefined}
+            variant="outline"
+            className="gap-2 px-4 border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs"
+          >
+            <FileSpreadsheet size={14} className="text-emerald-600" />
+            Excel
+          </Button>
+          <Button
+            onClick={onExportImage}
+            disabled={isLoading || !canExportImage || noData}
+            title={noData ? 'Belum ada data untuk diekspor' : !canExportImage ? imageLimitNote : undefined}
+            variant="outline"
+            className="gap-2 px-4 border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs disabled:opacity-50"
+          >
+            <ImageIcon size={14} />
+            Gambar
           </Button>
         </div>
 
-        {/* Sortir + export */}
-        <div className="flex flex-col sm:flex-row gap-2 w-full xl:w-auto">
-          <div className="flex flex-col gap-1 w-full sm:w-auto">
-            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
-              Urutkan:
-            </span>
-            <div
-              role="group"
-              aria-label="Urutkan laporan"
-              className="flex bg-slate-100 p-1.5 rounded-xl w-full sm:w-auto justify-center sm:justify-start"
-            >
-              {sortOptions.map((opt) => (
-                <button
-                  key={opt.value}
-                  type="button"
-                  onClick={() => onSortChange(opt.value)}
-                  aria-pressed={activeSort === opt.value}
-                  className={cn(
-                    'flex-1 sm:flex-none px-3 py-2 text-xs font-semibold rounded-lg transition-colors',
-                    activeSort === opt.value
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-500 hover:text-slate-700'
-                  )}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="grid grid-cols-3 gap-2 w-full sm:w-auto">
-            <Button
-              onClick={onExportPdf}
-              disabled={isLoading}
-              className="gap-2 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs"
-            >
-              <FileText size={14} />
-              PDF
-            </Button>
-            <Button
-              onClick={onExportExcel}
-              disabled={isLoading}
-              variant="outline"
-              className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs"
-            >
-              <FileSpreadsheet size={14} className="text-emerald-600" />
-              Excel
-            </Button>
-            <Button
-              onClick={onExportImage}
-              disabled={isLoading || !canExportImage}
-              title={!canExportImage ? imageLimitNote : undefined}
-              variant="outline"
-              className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 font-bold text-xs disabled:opacity-50"
-            >
-              <ImageIcon size={14} />
-              Gambar
-            </Button>
-          </div>
-          {!canExportImage && (
-            <p className="w-full text-[11px] text-slate-500 font-medium text-center sm:text-left">
-              {imageLimitNote}
-            </p>
-          )}
-          {isLoading && (
-            <p role="status" aria-live="polite" className="w-full text-[11px] font-semibold text-slate-600 text-center sm:text-left">
-              Menyiapkan ekspor…
-            </p>
-          )}
-        </div>
+        {!canExportImage && (
+          <p className="text-[11px] text-slate-500 font-medium max-w-[180px]">{imageLimitNote}</p>
+        )}
+        {isLoading && (
+          <p role="status" aria-live="polite" className="text-[11px] font-semibold text-slate-600">
+            Menyiapkan ekspor…
+          </p>
+        )}
       </div>
     </motion.div>
   );

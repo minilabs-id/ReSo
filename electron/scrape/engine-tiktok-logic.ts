@@ -23,11 +23,15 @@ export type CaptureStopReason =
   | 'no_template'
   | 'no_video'
   | 'no_login'
+  | 'rate_limit'
+  | 'blocked'
   | 'error'
 
 export interface CaptureRequest {
   /** URL template /api/comment/list yang sudah divalidasi (opsional). */
   templateUrl: string | null
+  /** Waktu template disimpan (epoch ms), untuk validasi TTL. */
+  templateCapturedAt?: number
   /** URL halaman video target (wajib untuk mode navigation, opsional untuk template). */
   videoUrl: string | null
   includeReplies: boolean
@@ -50,15 +54,10 @@ export interface CaptureResult {
 /** Pola endpoint komentar TikTok (satu tempat, mudah diaudit). */
 export const TT_COMMENT_LIST = '/api/comment/list'
 export const TT_COMMENT_REPLY = '/api/comment/list/reply'
-export const TT_VIDEO_API = '/api/item/detail'
 
 export function isTikTokCommentApi(url: string): boolean {
   const low = url.toLowerCase()
   return low.includes(TT_COMMENT_LIST) && !low.includes(TT_COMMENT_REPLY)
-}
-
-export function isTikTokReplyApi(url: string): boolean {
-  return url.toLowerCase().includes(TT_COMMENT_REPLY)
 }
 
 /** Cek halaman login TikTok (belum login → template tidak bisa dipanen). */

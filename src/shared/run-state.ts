@@ -14,11 +14,12 @@ import type { NameState, Platform, RunStatus, StopReason } from './types'
 /** Pesan dari engine/UI yang menentukan transisi. */
 export type RunEvent =
   | { type: 'START'; runId: string; includeReplies: boolean }
+  | { type: 'SET_OPTIONS'; includeReplies: boolean }
+  | { type: 'SET_TARGET'; hint: string }
   | { type: 'PROGRESS'; runId: string; names: string[] }
   | { type: 'DONE'; runId: string; reason: StopReason; names?: string[] }
   | { type: 'STOP'; reason?: StopReason }
   | { type: 'FAIL'; runId?: string; message: string }
-  | { type: 'RESET' }
 
 export interface TransitionResult {
   state: NameState
@@ -44,8 +45,9 @@ export function reduce(
 ): TransitionResult {
   const state = prev ?? defaultStateFor(platform)
 
-  if (event.type === 'RESET') {
-    return { state: defaultStateFor(platform), changed: true }
+  if (event.type === 'SET_OPTIONS') {
+    if (state.includeReplies === event.includeReplies) return { state, changed: false }
+    return { state: { ...state, includeReplies: event.includeReplies, updatedAt: Date.now() }, changed: true }
   }
 
   if (event.type === 'START') {
@@ -59,6 +61,10 @@ export function reduce(
         stopReason: null,
         runId: event.runId,
         includeReplies: event.includeReplies,
+        // Bersihkan target lama — kalau tidak, callout error lama berdampingan
+        // dengan "Target:" dari run sebelumnya (state dipersisten ke disk).
+        postHint: '',
+        videoHint: '',
         message: platform === 'tiktok' ? 'Mengambil komentar TikTok…' : 'Memproses…',
       },
       platform
@@ -66,10 +72,18 @@ export function reduce(
     return { state: next, changed: true }
   }
 
+  if (event.type === 'SET_TARGET') {
+    const key = platform === 'tiktok' ? 'videoHint' : 'postHint'
+    if (state[key] === event.hint) return { state, changed: false }
+    return { state: { ...state, [key]: event.hint, updatedAt: Date.now() }, changed: true }
+  }
+
   if (event.type === 'PROGRESS') {
     if (event.runId !== state.runId) return { state, changed: false }
     const merged = mergeNames(state.names, event.names, platform).slice(0, MAX_NAMES)
-    if (merged.length === state.names.length) return { state, changed: false }
+    // Bandingkan isi, bukan panjang: satu nama baru + satu nama lama yang
+    // gugur bisa saja sama panjangnya dan dibuang sebagai "tidak berubah".
+    if (JSON.stringify(merged) === JSON.stringify(state.names)) return { state, changed: false }
     return {
       state: { ...state, names: merged, count: merged.length, updatedAt: Date.now() },
       changed: true,
@@ -130,10 +144,15 @@ export function parseRunEvent(v: unknown): RunEvent | null {
   if (typeof v !== 'object' || v === null) return null
   const o = v as Record<string, unknown>
   const type = o['type']
-  if (type === 'RESET') return { type: 'RESET' }
   if (type === 'START') {
     if (typeof o['runId'] !== 'string' || !o['runId']) return null
     return { type: 'START', runId: o['runId'], includeReplies: o['includeReplies'] === true }
+  }
+  if (type === 'SET_OPTIONS') {
+    return { type: 'SET_OPTIONS', includeReplies: o['includeReplies'] === true }
+  }
+  if (type === 'SET_TARGET') {
+    return { type: 'SET_TARGET', hint: typeof o['hint'] === 'string' ? o['hint'].slice(0, 500) : '' }
   }
   if (type === 'PROGRESS') {
     if (typeof o['runId'] !== 'string') return null

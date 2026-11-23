@@ -6,7 +6,7 @@ import { useDialogA11y } from '../../hooks/useDialogA11y';
 
 /**
  * Konfirmasi aksi berbahaya/hangus kecil yang konsisten di seluruh aplikasi.
- * Dipakai untuk hapus token, verifikasi massal, bersihkan hasil scraper, dan
+ * Dipakai untuk verifikasi massal, bersihkan hasil scraper, pulihkan data, dan
  * menutup modal input yang belum disimpan.
  */
 interface ConfirmDialogProps {

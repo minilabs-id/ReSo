@@ -4,20 +4,20 @@ import { cva, type VariantProps } from "class-variance-authority"
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-xl border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus:outline-none focus:ring-1 focus:ring-slate-900 dark:focus:ring-slate-100 focus:border-slate-900 dark:focus:border-slate-100 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-xl border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus:outline-none focus:ring-1 focus:ring-slate-900 focus:border-slate-900 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-slate-800 dark:hover:bg-slate-200",
+        default: "bg-primary text-primary-foreground hover:bg-slate-800",
         outline:
-          "border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-50 hover:bg-slate-100 dark:hover:bg-slate-800",
+          "border border-slate-200 bg-white text-slate-900 hover:bg-slate-100",
         secondary:
-          "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-slate-50 hover:bg-slate-200 dark:hover:bg-slate-700",
+          "bg-slate-100 text-slate-900 hover:bg-slate-200",
         ghost:
-          "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-50",
+          "hover:bg-slate-100 text-slate-900",
         destructive:
-          "bg-rose-50 text-rose-700 hover:bg-rose-100 dark:bg-rose-950/40 dark:text-rose-400 dark:hover:bg-rose-900/50 border border-rose-100 dark:border-rose-900/50",
-        link: "text-slate-900 dark:text-slate-50 underline-offset-4 hover:underline",
+          "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-100",
+        link: "text-slate-900 underline-offset-4 hover:underline",
       },
       size: {
         default:

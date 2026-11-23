@@ -6,48 +6,49 @@
  * TIDAK PERNAH ditulis ke disk (lihat electron/ipc/contracts.ts — sesi hanya
  * hidup di memori main process). Store ini murni preferensi operator.
  */
+import { isAllowedScrapeUrl } from '../../src/shared/platform'
+import type { Platform } from '../../src/shared/types'
 
 export const STORE_KEYS = [
+  'homeUrlFacebook',
+  'homeUrlInstagram',
+  'homeUrlTiktok',
   'tiktokTemplateUrl',
-  'instagramTemplateUrl',
+  /** Waktu (epoch ms) template TikTok disimpan — 0 = warisan tanpa metadata. */
+  'tiktokTemplateCapturedAt',
   'maxScrollRounds',
   'scrollDelayMs',
   'captureTimeoutMs',
-  'launchAtLogin',
-  'minimizeToTray',
-  'autoSendToReso',
 ] as const
 
 export type StoreKey = (typeof STORE_KEYS)[number]
 
 export interface ResoSettings {
+  /** Halaman awal browser internal per platform (profil/postingan operator). */
+  homeUrlFacebook: string
+  homeUrlInstagram: string
+  homeUrlTiktok: string
   /** URL template feed TikTok yang sudah divalidasi operator ("" = belum diisi). */
   tiktokTemplateUrl: string
-  /** URL template postingan Instagram ("" = belum diisi). */
-  instagramTemplateUrl: string
+  /** Kapan template disimpan (epoch ms), dipakai validasi TTL 45 menit. */
+  tiktokTemplateCapturedAt: number
   /** Jumlah putaran auto-scroll komentar. */
   maxScrollRounds: number
   /** Jeda antar putaran scroll (ms). */
   scrollDelayMs: number
   /** Batas waktu satu proses scraping (ms). */
   captureTimeoutMs: number
-  /** Jalankan otomatis saat login Windows. */
-  launchAtLogin: boolean
-  /** Tutup jendela → sembunyikan ke tray, bukan keluar. */
-  minimizeToTray: boolean
-  /** Kirim hasil scraping ke ReSo otomatis (idempotent, ada antrian). */
-  autoSendToReso: boolean
 }
 
 export const SETTINGS_DEFAULTS: ResoSettings = {
+  homeUrlFacebook: '',
+  homeUrlInstagram: '',
+  homeUrlTiktok: '',
   tiktokTemplateUrl: '',
-  instagramTemplateUrl: '',
+  tiktokTemplateCapturedAt: 0,
   maxScrollRounds: 15,
   scrollDelayMs: 1200,
   captureTimeoutMs: 120_000,
-  launchAtLogin: false,
-  minimizeToTray: true,
-  autoSendToReso: true,
 }
 
 /** Batas keras (clamp) — mencegah operator/typo mematikan mesin scraper. */
@@ -72,8 +73,12 @@ function sanitizeUrl(v: unknown, fallback: string): string {
   return trimmed
 }
 
-function sanitizeBool(v: unknown, fallback: boolean): boolean {
-  return typeof v === 'boolean' ? v : fallback
+/** Halaman awal hanya boleh berada di domain platform yang bersangkutan. */
+function sanitizeHomeUrl(value: unknown, platform: Platform): string {
+  if (typeof value !== 'string') return ''
+  const trimmed = value.trim()
+  if (!trimmed || trimmed.length > LIMITS.urlLength) return ''
+  return isAllowedScrapeUrl(trimmed, platform) ? trimmed : ''
 }
 
 /**
@@ -82,10 +87,18 @@ function sanitizeBool(v: unknown, fallback: boolean): boolean {
  */
 export function sanitizeSetting(key: string, value: unknown): ResoSettings[StoreKey] | null {
   switch (key) {
+    case 'homeUrlFacebook':
+      return sanitizeHomeUrl(value, 'facebook')
+    case 'homeUrlInstagram':
+      return sanitizeHomeUrl(value, 'instagram')
+    case 'homeUrlTiktok':
+      return sanitizeHomeUrl(value, 'tiktok')
     case 'tiktokTemplateUrl':
       return sanitizeUrl(value, SETTINGS_DEFAULTS.tiktokTemplateUrl)
-    case 'instagramTemplateUrl':
-      return sanitizeUrl(value, SETTINGS_DEFAULTS.instagramTemplateUrl)
+    case 'tiktokTemplateCapturedAt':
+      return typeof value === 'number' && Number.isFinite(value) && value >= 0
+        ? Math.trunc(value)
+        : 0
     case 'maxScrollRounds':
       return clampNumber(
         value,
@@ -107,12 +120,6 @@ export function sanitizeSetting(key: string, value: unknown): ResoSettings[Store
         LIMITS.captureTimeoutMs.min,
         LIMITS.captureTimeoutMs.max
       )
-    case 'launchAtLogin':
-      return sanitizeBool(value, SETTINGS_DEFAULTS.launchAtLogin)
-    case 'minimizeToTray':
-      return sanitizeBool(value, SETTINGS_DEFAULTS.minimizeToTray)
-    case 'autoSendToReso':
-      return sanitizeBool(value, SETTINGS_DEFAULTS.autoSendToReso)
     default:
       return null
   }

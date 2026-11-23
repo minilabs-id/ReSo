@@ -4,35 +4,23 @@ import { Users2, Activity, TrendingUp, CheckCircle2, Calendar as CalendarIcon, A
 import { cn } from '@/lib/utils';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/card';
 import { ScrollArea } from '../ui/scroll-area';
-import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { DailyEngagement } from '../../types';
 import { parseLocalISODate } from '../../lib/date';
+import { containerVariants, itemVariants } from '../../shared/motion';
+import { EngagementStatus } from '../shared/EngagementStatus';
+import { PlatformBadge } from '../shared/PlatformBadge';
 
 const fmt = (n: number) => n.toLocaleString('id-ID');
 
-// Status rekap per hari untuk Aktivitas Terakhir
-function engagementStatus(eng: DailyEngagement): { label: string; className: string } {
-  if (eng.verifiedAt) {
-    return { label: 'Terverifikasi', className: 'border-emerald-100 text-emerald-700 bg-emerald-50' };
-  }
-  if (eng.autoFilledAt) {
-    return { label: 'Perlu review', className: 'border-amber-200 text-amber-700 bg-amber-50' };
-  }
-  return { label: 'Selesai', className: 'border-emerald-100 text-emerald-700 bg-emerald-50' };
+/** Status rekap per hari — satu definisi dipakai semua tampilan. */
+function engagementStatusValue(eng: DailyEngagement): 'selesai' | 'perlu-review' | 'terverifikasi' {
+  if (eng.verifiedAt) return 'terverifikasi';
+  if (eng.autoFilledAt) return 'perlu-review';
+  return 'selesai';
 }
 
 const EngagementChart = React.lazy(() => import('../EngagementChart'));
-
-const containerVariants: import('motion/react').Variants = {
-  hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.04, delayChildren: 0.02 } },
-};
-
-const itemVariants: import('motion/react').Variants = {
-  hidden: { opacity: 0, y: 6 },
-  visible: { opacity: 1, y: 0, transition: { type: 'tween', ease: 'easeOut', duration: 0.18 } },
-};
 
 const colorMap: Record<string, string> = {
   rose: 'bg-rose-50 text-rose-600',
@@ -63,7 +51,7 @@ const StatCard = React.memo(function StatCard({
         </div>
         <div>
           <p className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">{value}</p>
-          {subtitle && <p className="text-[10px] text-slate-400 mt-0.5">{subtitle}</p>}
+          {subtitle && <p className="text-[11px] text-slate-500 mt-0.5">{subtitle}</p>}
         </div>
       </div>
     </Card>
@@ -107,24 +95,9 @@ export const DashboardTab = ({
       initial="hidden"
       animate="visible"
       exit={{ opacity: 0 }}
-      className="space-y-6 md:space-y-8"
+      className="space-y-6"
     >
-      <motion.div
-        variants={itemVariants}
-        className="lg:hidden flex flex-col gap-3 bg-white p-5 rounded-xl border border-slate-200"
-      >
-        {onGoInput && (
-          <Button
-            onClick={onGoInput}
-            className="w-full bg-slate-900 text-white font-bold text-sm gap-2"
-          >
-            Input rekap hari ini
-            <ArrowRight size={16} />
-          </Button>
-        )}
-      </motion.div>
-
-      <motion.div variants={itemVariants} className="hidden lg:flex items-center justify-between">
+      <motion.div variants={itemVariants} className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900">Beranda</h1>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -142,23 +115,30 @@ export const DashboardTab = ({
         )}
       </motion.div>
 
-      <motion.div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4" variants={itemVariants}>
+      <motion.div className="grid grid-cols-4 gap-3 md:gap-4" variants={itemVariants}>
         <StatCard title="Total Pegawai" value={fmt(stats.totalEmployees)} icon={<Users2 size={18} />} color="violet" subtitle="Master data pegawai" />
         <StatCard title="Rekap Hari Ini" value={fmt(stats.todayCount)} icon={<Activity size={18} />} color="emerald" subtitle="Total interaksi (IG+FB+TT)" />
         <StatCard title="Total Interaksi" value={fmt(stats.totalEngagements)} icon={<TrendingUp size={18} />} color="sky" subtitle="Akumulasi semua rekap" />
-        <StatCard title="Pegawai aktif hari ini" value={`${fmt(stats.engagementRate)}%`} icon={<CheckCircle2 size={18} />} color="rose" subtitle="Unik, dari total pegawai — beda dengan % ENG laporan" />
+        <StatCard title="Engagement hari ini" value={`${fmt(stats.engagementRate)}%`} icon={<CheckCircle2 size={18} />} color="rose" subtitle="Aktual ÷ (pegawai × 3 platform) — sama dengan % ENG laporan" />
       </motion.div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <motion.div variants={itemVariants} className="lg:col-span-2">
           <Card className="h-full border border-slate-200 rounded-xl overflow-hidden bg-white">
-            <CardHeader className="p-5 border-b border-slate-100">
-              <CardTitle className="text-base font-bold text-slate-900">Tren 7 Hari</CardTitle>
-              <CardDescription className="text-xs text-slate-500">
-                Interaksi Instagram, Facebook & TikTok
-              </CardDescription>
+            <CardHeader className="p-5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <CardTitle className="text-base font-bold text-slate-900">Tren 7 Hari</CardTitle>
+                <CardDescription className="text-xs text-slate-500">
+                  Interaksi per platform
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <PlatformBadge platform="ig" />
+                <PlatformBadge platform="fb" />
+                <PlatformBadge platform="tiktok" />
+              </div>
             </CardHeader>
-            <CardContent className="p-4 sm:p-5 h-[280px] min-h-[280px]">
+            <CardContent className="p-4 sm:p-5 h-[320px] min-h-[320px]">
               <React.Suspense
                 fallback={
                   <div className="w-full h-full rounded-xl bg-slate-50 animate-pulse" />
@@ -193,7 +173,7 @@ export const DashboardTab = ({
                     const ig = eng.igEngagedEmployeeIds?.length || 0;
                     const fb = eng.fbEngagedEmployeeIds?.length || 0;
                     const tt = eng.tiktokEngagedEmployeeIds?.length || 0;
-                    const status = engagementStatus(eng);
+                    const status = engagementStatusValue(eng);
                     return (
                       <div
                         key={eng.id || i}
@@ -211,17 +191,18 @@ export const DashboardTab = ({
                               })}
                             </p>
                             <p className="text-xs text-slate-500 flex items-center gap-1 flex-wrap">
-                              <span className="text-pink-500 font-semibold">IG {ig}</span>
+                              <PlatformBadge platform="ig" showIcon={false} className="px-0" />
+                              <span className="font-semibold">{ig}</span>
                               <span>·</span>
-                              <span className="text-blue-500 font-semibold">FB {fb}</span>
+                              <PlatformBadge platform="fb" showIcon={false} className="px-0" />
+                              <span className="font-semibold">{fb}</span>
                               <span>·</span>
-                              <span className="text-slate-600 font-semibold">TT {tt}</span>
+                              <PlatformBadge platform="tiktok" showIcon={false} className="px-0" />
+                              <span className="font-semibold">{tt}</span>
                             </p>
                           </div>
                         </div>
-                        <Badge variant="outline" className={`text-[10px] font-semibold shrink-0 rounded-full ${status.className}`}>
-                          {status.label}
-                        </Badge>
+                        <EngagementStatus status={status} className="shrink-0" />
                       </div>
                     );
                   })}

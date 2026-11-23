@@ -19,14 +19,15 @@ function tidy(raw: string): string {
 const BLOCKED = [
   /^view\b/i, /^see\b/i, /^like\b/i, /^likes$/i, /^reply\b/i, /^share\b/i,
   /^comment\b/i, /^write\b/i, /^log\s*in/i, /^sign\s*up/i, /^facebook$/i,
-  /^meta$/i, /^suka$/i, /^balas$/i, /^bagikan$/i, /^komentar$/i, /^tulis/i,
-  /^lihat/i, /^tampilkan/i, /^semua$/i, /^most relevant$/i, /^all comments$/i,
-  /^newest$/i, /^terbaru$/i, /^paling relevan$/i, /^edited$/i, /^sponsor/i,
+  /^meta$/i, /^suka$/i, /^balas$/i, /^bagikan$/i, /^komentar$/i, /^tulis\b/i,
+  /^lihat\b/i, /^tampilkan\b/i, /^semua$/i, /^most relevant$/i, /^all comments$/i,
+  /^newest$/i, /^terbaru$/i, /^paling relevan$/i, /^edited$/i, /^sponsor\b/i,
   /^follow$/i, /^following$/i, /^followers$/i, /^ikuti$/i, /^send\b/i,
   /^kirim$/i, /^hide\b/i, /^open\b/i, /^photo$/i, /^video$/i, /^reels?$/i,
   /^add a comment/i, /^tulis komentar/i, /^write a comment/i,
   /^see more$/i, /^lihat selengkapnya$/i,
   /^tiktok$/i,
+  /^profile\b/i, /^mengikuti\b/i, /^following you\b/i,
 ]
 
 /** Tautan/promosi yang tidak boleh lolos jadi "nama". */
@@ -84,6 +85,7 @@ export function normalizeNickname(raw: unknown): string {
   if (name.startsWith('@') && !name.includes(' ')) name = name.slice(1)
   if (name.length < 1 || name.length > 100) return ''
   if (/^\d+$/.test(name)) return ''
+  if (!/[\p{L}\p{N}]/u.test(name)) return '' // emoji-only bukan nama
   if (looksLikeJunk(name)) return ''
   if (BLOCKED.some((re) => re.test(name))) return ''
   return name
@@ -96,8 +98,8 @@ const IG_BLOCKED = [
   /^saved$/i, /^settings$/i, /^help$/i, /^about$/i, /^terms$/i,
   /^privacy$/i, /^login$/i, /^signup$/i, /^report$/i, /^more$/i,
   /^comment$/i, /^reply$/i, /^share$/i, /^save$/i, /^like$/i,
-  /^sent$/i, /^translate/i, /^view/i, /^username$/i, /^new$/i,
-  /^edit/i, /^delete/i, /^cancel$/i, /^close$/i, /^copy/i,
+  /^sent$/i, /^translate\b/i, /^view\b/i, /^username$/i, /^new$/i,
+  /^edit\b/i, /^delete\b/i, /^cancel$/i, /^close$/i, /^copy\b/i,
   /^threads$/i, /^threadsapp$/i,
 ]
 
@@ -154,23 +156,4 @@ export function filterNames(names: readonly string[] | null | undefined, query: 
 /** Urutkan A–Z (locale id) pada salinan baru. */
 export function sortNamesAz(names: readonly string[] | null | undefined): string[] {
   return [...(names ?? [])].sort((a, b) => String(a).localeCompare(String(b), 'id'))
-}
-
-/**
- * Gabung nama dari beberapa platform — tiap nama dinormalisasi dengan aturan
- * platform-nya SENDIRI, lalu dedupe case-insensitive.
- */
-export function mergeAcrossPlatforms(
-  groups: readonly { platform: Platform; names: readonly string[] }[] | null | undefined
-): string[] {
-  const map = new Map<string, string>()
-  for (const g of groups ?? []) {
-    const platform: Platform =
-      g?.platform === 'tiktok' || g?.platform === 'instagram' ? g.platform : 'facebook'
-    for (const n of g?.names ?? []) {
-      const k = normalizeName(n, platform)
-      if (k && !map.has(k.toLowerCase())) map.set(k.toLowerCase(), k)
-    }
-  }
-  return [...map.values()]
 }

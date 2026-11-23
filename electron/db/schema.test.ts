@@ -52,9 +52,6 @@ eq(p1['ig_raw_text'], undefined, 'kolom lain TIDAK disentuh')
 const p2 = dailyPatchToColumns({ postedAt: ['2026-11-11T09:00'] }, 'now')
 eq(p2['posted_at'], '["2026-11-11T09:00"]', 'list → JSON string')
 
-const p3 = dailyPatchToColumns({ fbLinks: null }, 'now')
-eq(p3['fb_links'], '[]', 'list null → [] (bukan null)')
-
 const p4 = dailyPatchToColumns({ autoFilledCount: 12.7 }, 'now')
 eq(p4['auto_filled_count'], 12, 'count dibulatkan')
 const p5 = dailyPatchToColumns({ autoFilledCount: Number.NaN }, 'now')
@@ -96,9 +93,6 @@ const dailyRow: DailyRow = {
   ig_engaged_employee_ids: '["e9"]',
   fb_engaged_employee_ids: '[]',
   tiktok_engaged_employee_ids: '["e1"]',
-  ig_links: '[]',
-  fb_links: '[]',
-  tiktok_links: '["https://tiktok.com/@a/video/1"]',
   unmatched_names: '[{"name":"Orang Lain","platform":"tiktok"}]',
   posted_at: '["2026-11-11T09:00"]',
   auto_filled_at: '2026-11-11T09:05:00.000Z',

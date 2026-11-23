@@ -6,19 +6,7 @@
  * dikirim ke ReSo (antrian kirim ditangani M5).
  */
 import Store from 'electron-store'
-import { app } from 'electron'
-import { copyFileSync, existsSync, readFileSync } from 'fs'
-import { join } from 'path'
-
-function backupIfInvalid(name: string): void {
-  const file = join(app.getPath('userData'), `${name}.json`)
-  if (!existsSync(file)) return
-  try {
-    JSON.parse(readFileSync(file, 'utf8'))
-  } catch {
-    try { copyFileSync(file, `${file}.bak`) } catch { /* gagal membuat cadangan */ }
-  }
-}
+import { backupIfInvalid } from './backup-if-invalid'
 import { defaultStateFor, sanitizeState } from './state-schema'
 import type { NameState, Platform } from '../../src/shared/types'
 

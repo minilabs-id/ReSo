@@ -91,9 +91,9 @@ eq(s.message, 'boom', 'FAIL memakai pesan error')
 eq(reduce('facebook', s, { type: 'FAIL', runId: 'lain', message: 'x' }).changed, false, 'FAIL runId beda ditolak')
 eq(reduce('facebook', s, { type: 'FAIL', message: 'y' }).changed, true, 'FAIL tanpa runId tetap diterapkan')
 
-// --- RESET ---
-s = run([{ type: 'START', runId: 'r1', includeReplies: true }, { type: 'RESET' }])
-eq(s, defaultStateFor('facebook'), 'RESET → state default')
+// --- START membersihkan target lama ---
+s = reduce('facebook', { ...defaultStateFor('facebook'), postHint: 'https://lama' }, { type: 'START', runId: 'r1', includeReplies: true }).state
+eq(s.postHint, '', 'START menghapus postHint lama')
 
 // --- MAX_NAMES ---
 const banyak = Array.from({ length: 6000 }, (_, i) => `Nama${i}`)
@@ -113,5 +113,16 @@ eq(parseRunEvent({ type: 'PROGRESS', runId: 'r', names: ['a', 1, null] }), { typ
 eq(parseRunEvent({ type: 'DONE', runId: 'r' }), { type: 'DONE', runId: 'r', reason: 'complete', names: undefined }, 'parse DONE default complete')
 eq(parseRunEvent({ type: 'FAIL', message: 'x'.repeat(900) })?.type, 'FAIL', 'parse FAIL diterima')
 ok((parseRunEvent({ type: 'FAIL', message: 'x'.repeat(900) }) as { message: string }).message.length === 500, 'parse FAIL memotong pesan')
+
+// --- opsi & target (sumber kebenaran tombol Scrap in-page) ---
+s = run([{ type: 'SET_OPTIONS', includeReplies: true }])
+eq(s.includeReplies, true, 'SET_OPTIONS mengubah includeReplies')
+eq(reduce('facebook', s, { type: 'SET_OPTIONS', includeReplies: true }).changed, false, 'SET_OPTIONS identik → changed=false')
+s = run([{ type: 'SET_TARGET', hint: 'https://facebook.com/posts/1' }])
+eq(s.postHint, 'https://facebook.com/posts/1', 'SET_TARGET mengisi postHint (FB)')
+s = run([{ type: 'SET_TARGET', hint: 'https://tiktok.com/@x/video/1' }], 'tiktok')
+eq(s.videoHint, 'https://tiktok.com/@x/video/1', 'SET_TARGET mengisi videoHint (TikTok)')
+eq(parseRunEvent({ type: 'SET_OPTIONS', includeReplies: true }), { type: 'SET_OPTIONS', includeReplies: true }, 'parse SET_OPTIONS')
+eq(parseRunEvent({ type: 'SET_TARGET', hint: 'x' }), { type: 'SET_TARGET', hint: 'x' }, 'parse SET_TARGET')
 
 console.log(`run-state: ${n} checks OK`)

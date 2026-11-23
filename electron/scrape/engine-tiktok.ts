@@ -11,8 +11,7 @@
 import type { Session, WebContentsView } from 'electron'
 import { parseTikTokComments } from '../../src/shared/parsers'
 import { mergeNames } from '../../src/shared/normalize'
-import { isStaleRun } from '../../src/shared/state'
-import { sanitizeEngineOptions } from '../../src/shared/template'
+import { sanitizeEngineOptions, TEMPLATE_TTL_MS } from '../../src/shared/template'
 import {
   isTikTokCommentApi,
   isTikTokLoginWall,
@@ -24,6 +23,8 @@ import {
 
 interface Intercepted {
   urls: string[]
+  /** Status HTTP tertinggi yang terlihat (429/403 dipetakan ke reason khusus). */
+  maxStatus: number
 }
 
 function sleep(ms: number, signal: { aborted: boolean }): Promise<void> {
@@ -47,7 +48,7 @@ function sleep(ms: number, signal: { aborted: boolean }): Promise<void> {
 // daftarkan SATU listener bersama per Session, lalu tiap run cuma mendaftar &
 // menghapus sink-nya sendiri. Run lama tidak pernah bisa mengganggu run baru.
 
-type UrlSink = (url: string) => void
+type UrlSink = (url: string, statusCode: number) => void
 
 const sessionSinks = new Map<Session, Set<UrlSink>>()
 
@@ -61,7 +62,7 @@ function ensureInterceptor(ses: Session): Set<UrlSink> {
     if (!isTikTokCommentApi(details.url)) return
     for (const sink of [...sinks]) {
       try {
-        sink(details.url)
+        sink(details.url, details.statusCode ?? 0)
       } catch {
         /* sink mati → abaikan */
       }
@@ -83,15 +84,17 @@ function ensureInterceptor(ses: Session): Set<UrlSink> {
  */
 async function attachInterceptor(
   view: WebContentsView,
-  _includeReplies: boolean,
-  signal: { aborted: boolean }
+  signal: { aborted: boolean },
+  onStatus?: (status: number) => void
 ): Promise<{ result: Intercepted; detach: () => void }> {
-  const store: Intercepted = { urls: [] }
+  const store: Intercepted = { urls: [], maxStatus: 0 }
   const sinks = ensureInterceptor(view.webContents.session)
 
-  const sink: UrlSink = (url) => {
+  const sink: UrlSink = (url, statusCode) => {
     if (signal.aborted) return
     store.urls.push(url)
+    if (statusCode > store.maxStatus) store.maxStatus = statusCode
+    onStatus?.(statusCode)
   }
   sinks.add(sink)
 
@@ -103,16 +106,17 @@ async function attachInterceptor(
 }
 
 /**
- * Validasi URL template sebelum dinavigasi. `isTikTokTemplateValid` dari
- * template.ts memerlukan `capturedAt` (TTL) yang TIDAK disimpan di preferensi
- * operator — memakainya tanpa meta akan selalu menolak template yang valid.
- * `sanitizeEngineOptions('SET_TEMPLATE', …)` memakai aturan host + endpoint yang
- * sama (tiktok.com, /api/comment/list, bukan /list/reply), jadi ekuivalen aman.
+ * Validasi URL template sebelum dinavigasi: host/endpoint via sanitizeEngineOptions
+ * + TTL 45 menit bila metadata `capturedAt` tersedia. Template warisan tanpa
+ * metadata tetap diterima (kompatibilitas), tetapi template baru ditolak bila
+ * sudah kedaluwarsa.
  */
-export function sanitizeTikTokTemplateForRun(url: unknown): string | null {
+export function sanitizeTikTokTemplateForRun(url: unknown, capturedAt = 0): string | null {
   if (typeof url !== 'string' || !url.trim()) return null
   const clean = sanitizeEngineOptions('SET_TEMPLATE', { templateUrl: url }, 'tiktok').templateUrl
-  return clean ?? null
+  if (!clean) return null
+  if (capturedAt > 0 && Date.now() - capturedAt > TEMPLATE_TTL_MS) return null
+  return clean
 }
 
 /**
@@ -125,34 +129,135 @@ const HARVEST_JS = `(() => {
   const push = (t) => {
     if (typeof t !== 'string') return;
     const v = t.trim();
-    if (!v || seen.has(v)) return;
-    seen.add(v);
+    if (!v || seen.has(v.toLowerCase())) return;
+    seen.add(v.toLowerCase());
     out.push(v);
   };
-  // Kartu komentar: penulis biasanya di tautan profil /@username.
-  const cards = document.querySelectorAll('[data-e2e="comment-level-1"], [data-e2e="comment-level-2"]');
-  const roots = cards.length ? cards : document.querySelectorAll('div');
-  for (const card of roots) {
-    const author = card.querySelector('[data-e2e="comment-username-1"], [data-e2e="comment-username-2"], a[href^="/@"]');
-    if (author) push(author.textContent || '');
+  const fromHref = (a) => {
+    const h = a && a.getAttribute('href');
+    if (!h) return '';
+    const m = h.match(/^\\/@([A-Za-z0-9._]{1,30})/);
+    return m ? m[1] : '';
+  };
+
+  // HANYA kartu komentar — JANGAN pernah jatuh ke seluruh dokumen. Fallback lama
+  // querySelectorAll('div') + a[href^="/@"] menarik akun sidebar "Following"
+  // sebagai komentator (false positive engagement).
+  // SUMBER BENAR (diverifikasi pada 2 video berbeda):
+  //   [data-e2e="comment-username-1"] > a[href^="/@username"]
+  // data-e2e="inbox-list" adalah NOTIFIKASI akun (komentar lintas video) —
+  // mengambilnya menghasilkan nama yang sama pada video berbeda. Jangan pakai.
+  const authors = document.querySelectorAll(
+    '[data-e2e="comment-username-1"], [data-e2e="comment-username-2"]'
+  );
+  for (const author of authors) {
+    const a = author.querySelector('a[href^="/@"]');
+    const u = fromHref(a);
+    if (u) push(u);
   }
-  // Fallback: tautan profil tunggal di area komentar.
+
+  // Fallback aman: anchor profil di dalam header komentar (bukan inbox).
   if (!out.length) {
-    for (const a of document.querySelectorAll('a[href^="/@"]')) push(a.getAttribute('href').slice(2));
+    for (const a of document.querySelectorAll('a[href^="/@"]')) {
+      if (!a.closest('[data-e2e*="comment"], [class*="CommentHeader"]')) continue;
+      if (a.closest('[data-e2e="inbox-list"], [data-e2e="inbox-notifications"]')) continue;
+      push(fromHref(a));
+    }
   }
   return out;
 })()`
 
-/** Klik ikon komentar di halaman video (tanpa menggeser viewport). */
+/**
+ * TikTok mengabaikan `element.click()` dari executeJavaScript (event untrusted),
+ * sehingga panel komentar tidak pernah terbuka hanya dengan klik programatik.
+ * Klik lewat pipeline input Electron menghasilkan event trusted yang setara
+ * dengan klik operator. Dipanggil setelah halaman video selesai dimuat.
+ */
+async function clickCommentsTrusted(
+  view: WebContentsView,
+  runJs: <T>(script: string) => Promise<T>
+): Promise<string | null> {
+  const wc = view.webContents
+  // Tanpa pipeline input (mis. test/engine non-Electron) jangan buang waktu.
+  if (typeof wc.sendInputEvent !== 'function') return null
+  try {
+    let box: { x: number; y: number; label: string } | null = null
+    // Video TikTok bisa butuh beberapa detik untuk me-render action bar setelah
+    // loadURL. Coba beberapa kali sebelum menyerah.
+    for (let attempt = 0; attempt < 12 && !box; attempt++) {
+      box = await runJs<{ x: number; y: number; label: string } | null>(`(() => {
+      const icons = Array.from(document.querySelectorAll('[data-e2e="comment-icon"]'));
+      const score = (el) => {
+        const m = (el.getAttribute('aria-label') || '').match(/(\\d+)\\s*comments?/i);
+        return m ? Number(m[1]) : 0;
+      };
+      icons.sort((a, b) => score(b) - score(a));
+      const el = icons[0] || document.querySelector('[data-e2e="browse-comment"]');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      if (r.width < 4 || r.height < 4 || r.bottom < 0 || r.top > innerHeight) return null;
+      return {
+        x: Math.round(r.left + r.width / 2),
+        y: Math.round(r.top + r.height / 2),
+        label: el.getAttribute('aria-label') || ''
+      };
+    })()`)
+      if (!box) await new Promise((r) => setTimeout(r, 500))
+    }
+    if (!box) return null
+
+    // `sendInputEvent` memakai koordinat window, bukan viewport halaman. Coba
+    // ruang koordinat yang mungkin (terutama offset WebContentsView di sidebar).
+    const vb = view.getBounds()
+    const candidates: Array<[number, number]> = [
+      [box.x + vb.x, box.y + vb.y],
+      [box.x + vb.x, box.y],
+      [box.x, box.y],
+      [box.x, box.y + vb.y],
+    ]
+    for (const [x, y] of candidates) {
+      try {
+        wc.sendInputEvent({ type: 'mouseMove', x, y })
+        wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 })
+        wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 })
+        await new Promise((r) => setTimeout(r, 1200))
+        const opened = await runJs(`!!document.querySelector('[data-e2e="comment-username-1"]')`)
+        if (opened) return box.label || 'comment-icon'
+      } catch {
+        /* coba kandidat berikutnya */
+      }
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+/** Klik ikon komentar di halaman video (fallback untuk browser non-Electron). */
 const OPEN_COMMENTS_JS = `(() => {
-  const sels = [
-    '[data-e2e="comment-icon"]',
-    '[data-e2e="browse-comment"]',
-    'button[aria-label*="omment"]',
-  ];
+  // Prioritas: ikon komentar dengan JUMLAH terbesar. Di halaman video nyata
+  // ada dua [data-e2e="comment-icon"] (0 dan 133) — regex lama mengabaikan
+  // aria-label "Read or add comments 133 comments" karena diawali "Read".
+  const icons = Array.from(document.querySelectorAll('[data-e2e="comment-icon"]'));
+  if (icons.length) {
+    const score = (el) => {
+      const a = el.getAttribute('aria-label') || '';
+      const n = a.match(/(\\d+)\\s*comments?/i);
+      return n ? Number(n[1]) : 0;
+    };
+    icons.sort((a, b) => score(b) - score(a));
+    try { icons[0].click(); return 'comment-icon:' + score(icons[0]); } catch (_) {}
+  }
+  const sels = ['[data-e2e="browse-comment"]', 'button[aria-label*="omment"]', '[aria-label*="Comment"]', 'div[role="button"]', 'button'];
+  const re = /^(comments?|komentar|\\d+\\s*comments?|view all comments?)/i;
   for (const s of sels) {
-    const el = document.querySelector(s);
-    if (el) { el.click(); return s; }
+    for (const el of document.querySelectorAll(s)) {
+      const label = (el.getAttribute('aria-label') || '').trim();
+      const text = (el.textContent || '').trim();
+      if (re.test(text) || /read or add comments/i.test(label) || re.test(label)) {
+        try { el.click(); return s; } catch (_) {}
+      }
+    }
   }
   return null;
 })()`
@@ -161,8 +266,12 @@ const OPEN_COMMENTS_JS = `(() => {
 const SCROLL_COMMENT_CONTAINER_JS = `(() => {
   const sels = [
     '[data-e2e="comment-list"]',
+    // Container yang benar-benar di-scroll di TikTok saat ini.
+    '[class*="DivCommentMain"]',
     '[class*="DivCommentListContainer"]',
     '[class*="CommentListContainer"]',
+    'div[class*="RightPanelContainer"]',
+    'div[class*="CommentFooter"]',
   ];
   for (const s of sels) {
     const el = document.querySelector(s);
@@ -185,25 +294,67 @@ export async function runTikTokCapture(
   const names: string[] = []
   const deadline = Date.now() + req.timeoutMs
   const wc = view.webContents
+  /** Status HTTP tertinggi dari respons komentar (0 = tak ada respons). */
+  let maxStatus = 0
 
-  const finish = (reason: CaptureResult['reason'], detail?: string): CaptureResult => ({
-    names: mergeNames([], names, 'tiktok'),
-    mode,
-    reason,
-    detail,
-  })
+  /** executeJavaScript dengan batas deadline/abort agar STOP tidak menggantung. */
+  const runJs = <T>(script: string): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      let settled = false
+      const timer = setTimeout(
+        () => settle(() => reject(new Error('scrape-timeout'))),
+        Math.max(1, deadline - Date.now())
+      )
+      const poll = setInterval(() => {
+        if (req.signal.aborted) settle(() => reject(new Error('scrape-aborted')))
+      }, 50)
+      const settle = (fn: () => void): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        clearInterval(poll)
+        fn()
+      }
+      try {
+        wc.executeJavaScript(script, true).then(
+          (v) => settle(() => resolve(v as T)),
+          (e) => settle(() => reject(e))
+        )
+      } catch (err) {
+        settle(() => reject(err))
+      }
+    })
+
+  const finish = (reason: CaptureResult['reason'], detail?: string): CaptureResult => {
+    let finalReason = reason
+    let finalDetail = detail
+    if (maxStatus === 429) {
+      finalReason = 'rate_limit'
+      finalDetail = 'TikTok membatasi permintaan (429) — tunggu beberapa menit lalu coba lagi.'
+    } else if (maxStatus === 403) {
+      finalReason = 'blocked'
+      finalDetail = 'Akses komentar ditolak TikTok (403) — periksa login/checkpoint di browser.'
+    }
+    return { names: mergeNames([], names, 'tiktok'), mode, reason: finalReason, detail: finalDetail }
+  }
 
   if (mode === 'template' && req.templateUrl) {
     // Jangan pernah navigasi ke URL yang gagal divalidasi (host/endpoint asing).
-    const safeUrl = sanitizeTikTokTemplateForRun(req.templateUrl)
+    const safeUrl = sanitizeTikTokTemplateForRun(req.templateUrl, req.templateCapturedAt ?? 0)
     if (!safeUrl) return finish('no_template', 'template URL tidak valid')
     if (req.signal.aborted) return finish('stopped')
+    // Pantau status respons template (/api/comment/list) lewat sink bersama.
+    const statusSinks = ensureInterceptor(wc.session)
+    const statusSink: UrlSink = (_url, status) => {
+      if (status > maxStatus) maxStatus = status
+    }
+    statusSinks.add(statusSink)
     try {
       // WebContents.loadURL tidak mengembalikan status HTTP; kegagalan load
       // melempar error dan ditangkap di blok catch di bawah.
       await wc.loadURL(safeUrl)
       if (req.signal.aborted) return finish('stopped')
-      const body = await wc.executeJavaScript('document.body ? document.body.innerText : ""', true)
+      const body = await runJs<string>('document.body ? document.body.innerText : ""')
       if (typeof body !== 'string' || !body.trim()) return finish('no_template', 'body kosong')
       let json: unknown = null
       try {
@@ -224,24 +375,52 @@ export async function runTikTokCapture(
       return { names: mergeNames([], parsed, 'tiktok'), mode, reason: 'complete' }
     } catch (err) {
       return finish('error', err instanceof Error ? err.message : String(err))
+    } finally {
+      statusSinks.delete(statusSink)
     }
   }
 
   if (!req.videoUrl) return finish('no_video')
   if (isTikTokLoginWall(req.videoUrl)) return finish('no_login')
 
-  const { result: intercepted, detach } = await attachInterceptor(view, req.includeReplies, req.signal)
+  const { result: intercepted, detach } = await attachInterceptor(view, req.signal, (status) => {
+    if (status > maxStatus) maxStatus = status
+  })
   try {
     await wc.loadURL(req.videoUrl)
+    if (req.signal.aborted) return finish('stopped')
     if (isTikTokLoginWall(wc.getURL())) return finish('no_login')
 
-    await sleep(1200, req.signal)
-    try {
-      await wc.executeJavaScript(OPEN_COMMENTS_JS, true)
-    } catch {
-      /* klik gagal → andalkan harvest berikutnya */
+    await sleep(Math.max(2000, Math.min(4000, req.scrollDelayMs * 2)), req.signal)
+    if (req.signal.aborted) return finish('stopped')
+    // Buka panel komentar. Klik trusted wajib — TikTok mengabaikan klik
+    // programatik biasa. Fallback tetap ada bila pipeline input gagal.
+    const opened = await clickCommentsTrusted(view, runJs)
+    if (!opened) {
+      try {
+        await runJs(OPEN_COMMENTS_JS)
+      } catch {
+        if (req.signal.aborted) return finish('stopped')
+        /* klik gagal → andalkan harvest berikutnya */
+      }
+    }
+    // Tunggu kartu komentar sempat di-render sebelum putaran pertama — hanya
+    // bila klik trusted benar-benar terkirim, dan tidak melewati deadline.
+    if (opened) {
+      for (let i = 0; i < 20 && Date.now() < deadline; i++) {
+        if (req.signal.aborted) return finish('stopped')
+        const ready = await runJs<boolean>(
+          `!!document.querySelector('[data-e2e="comment-username-1"], [data-e2e="comment-username-2"]')`
+        ).catch(() => false)
+        if (ready) break
+        await sleep(400, req.signal)
+      }
     }
 
+    // Dedupe lintas putaran: HARVEST_JS hanya punya Set per pemanggilan, jadi
+    // komentar yang sama muncul lagi tiap scroll. Tanpa `seen` di sini,
+    // `emptyRounds` tidak pernah naik dan run menghabiskan semua scroll rounds.
+    const seen = new Set<string>()
     let emptyRounds = 0
     for (let round = 0; round < req.maxScrollRounds; round++) {
       if (req.signal.aborted) return finish('stopped')
@@ -249,19 +428,28 @@ export async function runTikTokCapture(
 
       let found: string[] = []
       try {
-        found = (await wc.executeJavaScript(HARVEST_JS, true)) as string[]
+        found = await runJs<string[]>(HARVEST_JS)
       } catch {
+        if (req.signal.aborted) return finish('stopped')
+        if (Date.now() >= deadline) return finish(names.length ? 'incomplete' : 'timeout')
         found = []
       }
       const before = names.length
       if (Array.isArray(found)) {
-        for (const name of found) if (typeof name === 'string') names.push(name)
+        for (const name of found) {
+          if (typeof name !== 'string') continue
+          const key = name.trim().toLowerCase()
+          if (!key || seen.has(key)) continue
+          seen.add(key)
+          names.push(name.trim())
+        }
       }
       emptyRounds = names.length === before ? emptyRounds + 1 : 0
 
       try {
-        await wc.executeJavaScript(SCROLL_COMMENT_CONTAINER_JS, true)
+        await runJs(SCROLL_COMMENT_CONTAINER_JS)
       } catch {
+        if (req.signal.aborted) return finish('stopped')
         /* tanpa container → putaran berikutnya harvest lagi */
       }
 
@@ -275,9 +463,4 @@ export async function runTikTokCapture(
   } finally {
     detach()
   }
-}
-
-/** Guard run basi — dipakai RunController sebelum menulis hasil. */
-export function resultIsStale(stateRunId: string | null, runId: string | null): boolean {
-  return isStaleRun(stateRunId, runId)
 }

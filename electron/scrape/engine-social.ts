@@ -12,6 +12,7 @@
 
 import type { WebContentsView } from 'electron'
 import { mergeNames } from '../../src/shared/normalize'
+import { shouldIncludeCandidate } from './engine-social-logic'
 
 // ===================== Tipe publik =====================
 
@@ -40,12 +41,14 @@ const ZERO_NAMES_DETAIL = 'Komentar belum terbuka / belum login.'
  * kegagalan diabaikan pemanggil (post memang mungkin sudah terbuka).
  */
 const OPEN_COMMENTS_JS = `(() => {
-  const re = /^(view (all )?(\\d+ )?comments?|lihat (semua )?(\\d+ )?komentar|show comments?|tampilkan komentar|comments?|komentar)$/i;
-  const nodes = Array.from(document.querySelectorAll('button, [role="button"], a, [aria-label]'));
+  const re = /^(view (all )?(\\d+ )?comments?|lihat (semua )?(\\d+ )?komentar|show comments?|tampilkan komentar|comments?|komentar|\\d+\\s*comments?)$/i;
+  // Instagram & TikTok memakai <div role="button"> / div biasa untuk tombol
+  // "Comment(s)" — selector lama hanya button/a sehingga panel tak pernah open.
+  const nodes = Array.from(document.querySelectorAll('button, [role="button"], a, div, [aria-label], [data-e2e]'));
   for (const el of nodes) {
     const t = (el.textContent || '').trim();
     const al = (el.getAttribute('aria-label') || '').trim();
-    if (re.test(t) || re.test(al)) {
+    if ((t && t.length < 40 && re.test(t)) || re.test(al)) {
       try { el.click(); return true; } catch (e) { /* lanjut */ }
     }
   }
@@ -89,7 +92,7 @@ const SCROLL_JS = `(() => {
  * Bangun skrip panen nama. Nilai `platform` & `includeReplies` ditanamkan sebagai
  * literal (boolean/string aman) karena executeJavaScript tidak menerima argumen.
  */
-function buildHarvestScript(platform: SocialPlatform, includeReplies: boolean): string {
+export function buildHarvestScript(platform: SocialPlatform, includeReplies: boolean): string {
   return `(() => {
     const PLATFORM = ${JSON.stringify(platform)};
     const INCLUDE_REPLIES = ${includeReplies ? 'true' : 'false'};
@@ -111,7 +114,10 @@ function buildHarvestScript(platform: SocialPlatform, includeReplies: boolean): 
       .trim();
 
     if (PLATFORM === 'instagram') {
-      // Username IG: anchor profil /username/ di area komentar.
+      // Aturan keputusan dipakai bersama test unit — source fungsi ini
+      // diserialisasi supaya browser & test menjalankan logika yang identik.
+      var SHOULD_INCLUDE = ${shouldIncludeCandidate.toString()};
+
       const RESERVED = new Set([
         'explore','reel','reels','direct','inbox','account','accounts','settings',
         'saved','activity','story','stories','p','tv','about','help','login',
@@ -119,43 +125,80 @@ function buildHarvestScript(platform: SocialPlatform, includeReplies: boolean): 
         'replies','tag','tags','nametag','new','edit'
       ]);
       const anchors = Array.from(document.querySelectorAll('a[href^="/"]'));
-      const measured = [];
-      for (const a of anchors) {
+      const userRe = /^\\/([A-Za-z0-9._]{1,30})\\/?(?:[?#].*)?$/;
+      const users = anchors.filter((a) => userRe.test(a.getAttribute('href') || ''));
+      const rect = (el) => typeof el.getBoundingClientRect === 'function'
+        ? el.getBoundingClientRect() : { top: 0, left: 0 };
+
+      // Tiap komentar IG punya anchor timestamp /p/<shortcode>/c/<id>/ yang
+      // sejajar dengan anchor username. Ini sinyal struktural, bukan absolut —
+      // filter lama left &lt; 600 menggugurkan SEMUA komentar di browser 789px.
+      const stamps = anchors.filter((a) => /\\/p\\/[^/]+\\/c\\/[^/?#]+/.test(a.getAttribute('href') || ''));
+      const candidates = [];
+
+      if (stamps.length) {
+        for (const s of stamps) {
+          const sr = rect(s);
+          let best = null;
+          for (const a of users) {
+            const ar = rect(a);
+            if (Math.abs(ar.top - sr.top) > 8 || ar.left >= sr.left) continue;
+            if (!best || ar.left > rect(best).left) best = a;
+          }
+          if (best) {
+            candidates.push({
+              a: best,
+              depth: Math.max(0, ((s.getAttribute('href') || '').match(/\\/c\\//g) || []).length - 1)
+            });
+          }
+        }
+      } else {
+        // Fallback bila DOM berubah: pakai cluster posisi RELATIF (modus),
+        // bukan angka piksel tetap yang bergantung lebar jendela.
+        const counts = new Map();
+        for (const u of users) {
+          const key = Math.round(rect(u).left / 10) * 10;
+          counts.set(key, (counts.get(key) || 0) + 1);
+        }
+        const base = [...counts.entries()].sort((x, y) => y[1] - x[1])[0]?.[0];
+        if (base != null) {
+          for (const u of users) {
+            if (Math.abs(Math.round(rect(u).left / 10) * 10 - base) < 5) {
+              candidates.push({ a: u, depth: 0 });
+            }
+          }
+        }
+      }
+
+      const minLeft = candidates.length ? Math.min(...candidates.map((c) => rect(c.a).left)) : 0;
+      for (const { a, depth } of candidates) {
         const href = a.getAttribute('href') || '';
-        const m = href.match(/^\\/([A-Za-z0-9._]{1,30})\\/?(?:[?#].*)?$/);
-        if (!m) continue;
-        const user = m[1].replace(/^@/, '');
-        if (!user || RESERVED.has(user.toLowerCase())) continue;
-        // Buang tautan navigasi/menu/header (bukan komentator).
-        if (a.closest('nav, header, aside, footer, form, [role="navigation"], [role="menubar"], [role="menu"], [role="banner"]')) continue;
-        // Penulis post biasanya berada di baris dengan tombol Follow/Following.
+        const user = (href.match(userRe) || [])[1];
+        if (!user) continue;
+        const rawLabel = (a.textContent || '').trim();
+        const verified = /Verified$/i.test(rawLabel);
+        const label = rawLabel.replace(/Verified$/i, '').trim();
         let nearFollow = false;
-        const row = a.parentElement && a.parentElement.parentElement;
-        if (row) {
-          const btns = row.querySelectorAll('button, [role="button"]');
+        let ancestor = a.parentElement;
+        for (let d = 0; ancestor && d < 5 && !nearFollow; d++, ancestor = ancestor.parentElement) {
+          const btns = ancestor.querySelectorAll('button, [role="button"]');
           for (const b of btns) {
             const bt = ((b.textContent || '') + ' ' + (b.getAttribute('aria-label') || '')).trim();
             if (/^(Follow|Following|Ikuti|Mengikuti)$/i.test(bt)) { nearFollow = true; break; }
           }
         }
-        if (nearFollow) continue;
-        let cls = '';
-        let p = a.parentElement;
-        for (let i = 0; p && i < 8; i++) {
-          cls += ' ' + (typeof p.className === 'string' ? p.className : '') + ' ' + (p.id || '');
-          p = p.parentElement;
-        }
-        const byClass = /reply|balas/i.test(cls);
-        const rect = typeof a.getBoundingClientRect === 'function' ? a.getBoundingClientRect() : null;
-        measured.push({ user, byClass, left: rect ? rect.left : 0 });
-      }
-      // Balasan IG biasanya di-indent; pakai left terkecil sebagai baseline.
-      let baseline = Infinity;
-      for (const it of measured) if (!it.byClass && it.left < baseline) baseline = it.left;
-      for (const it of measured) {
-        const isReply = it.byClass || (it.left > baseline + 24);
-        if (isReply && !INCLUDE_REPLIES) continue;
-        push(it.user);
+        if (SHOULD_INCLUDE({
+          user,
+          label,
+          reserved: RESERVED.has(user.toLowerCase()),
+          verified,
+          inNav: !!a.closest('nav, header, aside, footer, form, [role="navigation"], [role="menubar"], [role="menu"], [role="banner"]'),
+          nearFollow,
+          depth,
+          left: rect(a).left,
+          minLeft,
+          includeReplies: INCLUDE_REPLIES
+        })) push(user);
       }
     } else {
       // Facebook: nama penulis dari kontainer komentar.
@@ -253,6 +296,38 @@ export async function runSocialCapture(
   const deadline = Date.now() + Math.max(0, options.timeoutMs)
   const usePlatform: SocialPlatform = platform === 'instagram' ? 'instagram' : 'facebook'
 
+  /**
+   * Setiap executeJavaScript dibatasi sisa deadline & abort. Tanpa ini, halaman
+   * yang menggantung membuat run tidak bisa dihentikan (STOP hanya mengubah
+   * flag, tapi await tidak pernah selesai).
+   */
+  const runJs = <T>(script: string): Promise<T> =>
+    new Promise<T>((resolve, reject) => {
+      let settled = false
+      const timer = setTimeout(
+        () => settle(() => reject(new Error('scrape-timeout'))),
+        Math.max(1, deadline - Date.now())
+      )
+      const poll = setInterval(() => {
+        if (signal.aborted) settle(() => reject(new Error('scrape-aborted')))
+      }, 50)
+      const settle = (fn: () => void): void => {
+        if (settled) return
+        settled = true
+        clearTimeout(timer)
+        clearInterval(poll)
+        fn()
+      }
+      try {
+        view.webContents.executeJavaScript(script, true).then(
+          (v) => settle(() => resolve(v as T)),
+          (e) => settle(() => reject(e))
+        )
+      } catch (err) {
+        settle(() => reject(err))
+      }
+    })
+
   /** Akhiri run: normalisasi + dedupe final lewat aturan platform masing-masing. */
   const finish = (reason: SocialCaptureResult['reason'], detail?: string): SocialCaptureResult => {
     const merged = mergeNames([], names, usePlatform)
@@ -284,11 +359,15 @@ export async function runSocialCapture(
 
     // Best-effort: buka panel komentar bila belum terbuka.
     try {
-      await wc.executeJavaScript(OPEN_COMMENTS_JS, true)
+      await runJs(OPEN_COMMENTS_JS)
     } catch {
       /* abaikan — post mungkin sudah terbuka */
     }
 
+    // Panel komentar IG/FB butuh waktu untuk me-render setelah tombol diklik.
+    // Tanpa jeda ini, putaran pertama memanen hanya penulis post lalu 3 putaran
+    // kosong berikutnya mengakhiri run sebelum komentar sempat muncul.
+    await sleep(Math.min(2000, Math.max(800, options.scrollDelayMs)), signal, deadline)
     if (signal.aborted) return finish('stopped')
     if (Date.now() > deadline) return finish(names.length ? 'incomplete' : 'timeout')
 
@@ -303,15 +382,17 @@ export async function runSocialCapture(
 
       let found: unknown = []
       try {
-        found = await wc.executeJavaScript(harvest, true)
-      } catch {
+        found = await runJs(harvest)
+      } catch (err) {
+        if (signal.aborted) return finish('stopped')
+        if (Date.now() >= deadline) return finish(names.length ? 'incomplete' : 'timeout')
         found = []
       }
       emptyRounds = addFound(found) === 0 ? emptyRounds + 1 : 0
 
       // Geser container komentar / window untuk memuat komentar berikutnya.
       try {
-        await wc.executeJavaScript(SCROLL_JS, true)
+        await runJs(SCROLL_JS)
       } catch {
         /* tanpa container → putaran berikutnya panen lagi */
       }

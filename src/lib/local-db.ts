@@ -78,10 +78,6 @@ export interface Query {
   constraints: QueryConstraint[]
 }
 
-/** Nilai `db` tidak lagi bermakna (dulu Firestore instance) — dipakai apa adanya. */
-export const localDb = (): null => null
-export type Firestore = null
-
 // ===================== Akses database (IPC) =====================
 
 interface DataRow {
@@ -132,7 +128,7 @@ async function saveRow(name: CollectionName, id: string, fields: Fields): Promis
     return
   }
   if (name === 'settings') {
-    // Nilai disimpan apa adanya sebagai JSON (dipakai social_links/meta_api).
+    // Nilai disimpan apa adanya sebagai JSON.
     // Cek hasilnya: main process bisa menolak payload (key/value tidak valid) —
     // jangan sampai UI mengira tulis berhasil.
     if (!b.setSetting) throw new Error('Database lokal tidak mendukung pengaturan.')
@@ -203,11 +199,6 @@ export function dinasDoc(
   return { kind: 'doc', name: name as CollectionName, id }
 }
 
-/** Tidak ada login di aplikasi offline — disediakan agar import lama kompatibel. */
-export async function logout(): Promise<void> {
-  // Sengaja kosong: tidak ada sesi untuk diakhiri.
-}
-
 /**
  * `doc(collection)` → dokumen dengan id baru.
  * `doc(db, name, id)` / `doc(db, 'dinas', uid, name, id)` → id eksplisit
@@ -241,10 +232,6 @@ export function where(field: string, op: QueryConstraint['op'], value: unknown):
 
 export function orderBy(field: string, direction: 'asc' | 'desc' = 'asc'): QueryConstraint {
   return { kind: 'orderBy', field, direction }
-}
-
-export function limit(count: number): QueryConstraint {
-  return { kind: 'limit', count }
 }
 
 // ===================== Evaluasi query di memori =====================
@@ -569,14 +556,6 @@ export async function runTransaction<T>(
   const result = await cb(tx)
   await batch.commit()
   return result
-}
-
-/** Error bertipe sama seperti Firestore, supaya `handleFirestoreError` tetap jalan. */
-export class FirestoreError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'FirestoreError'
-  }
 }
 
 /** True bila berjalan di dalam Electron (ada database lokal). */

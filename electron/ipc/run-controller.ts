@@ -10,8 +10,9 @@ import { BrowserWindow } from 'electron'
 import { IPC } from '../ipc/contracts'
 import { reduce, parseRunEvent, type RunEvent } from '../../src/shared/run-state'
 import { defaultStateFor } from '../store/state-schema'
-import { clearState, getAllStates, getState, setState } from '../store/state-store'
+import { getAllStates, getState, setState } from '../store/state-store'
 import { cancelRun, setMainWindow, startRun } from '../scrape/runner'
+import { handoffScrapeToRekap, type HandoffResult } from '../scrape/auto-handoff'
 import type { NameState, Platform } from '../../src/shared/types'
 
 /**
@@ -27,6 +28,20 @@ function broadcast(platform: Platform, state: NameState): void {
     if (win.isDestroyed()) continue
     win.webContents.send(IPC.scrapeStateChanged, { platform, state })
   }
+}
+
+function broadcastHandoff(result: HandoffResult): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue
+    win.webContents.send(IPC.scrapeHandoff, result)
+  }
+}
+
+/** Satu tempat penulisan hasil → rekap, dipakai DONE/STOP/FAIL/supersede. */
+function handoff(platform: Platform, names: string[]): void {
+  if (!names.length) return
+  const result = handoffScrapeToRekap(platform, names)
+  if (result) broadcastHandoff(result)
 }
 
 export const runController = {
@@ -48,18 +63,26 @@ export const runController = {
       const current = getState(platform)
       if (current.status === 'running') {
         if (current.runId === event.runId) return current // duplikat → abaikan
-        // runId baru menyusul: putus run lama, bersihkan state, lalu START baru.
-        cancelRun(platform)
+        // runId baru menyusul: simpan dulu nama dari run lama supaya tidak
+        // hilang, lalu reset. Pemutusan engine lama dilakukan runner.startRun()
+        // yang menunggu `done`-nya sebelum menyentuh WebContentsView yang sama.
+        handoff(platform, current.names)
         runController.reset(platform)
       }
     }
 
     const prev = getState(platform)
+    const wasRunning = prev.status === 'running'
     const { state, changed } = reduce(platform, prev, event)
     if (!changed) return prev
 
     setState(platform, state)
     broadcast(platform, state)
+
+    // Handoff tepat sekali saat run berakhir (DONE / STOP / FAIL) — termasuk
+    // nama parsial saat operator menekan Hentikan. Tidak ada langkah salin/paste;
+    // input manual tetap tersedia di modal rekap.
+    if (wasRunning && state.status !== 'running') handoff(platform, state.names)
 
     // Efek nyata: START menyalakan engine, STOP memotong run yang berjalan.
     if (event.type === 'START') {
@@ -70,13 +93,6 @@ export const runController = {
       cancelRun(platform)
     }
 
-    return state
-  },
-
-  /** Buang hasil (nama) tapi pertahankan preferensi platform. */
-  clearNames(platform: Platform): NameState {
-    const state = clearState(platform)
-    broadcast(platform, state)
     return state
   },
 

@@ -7,9 +7,8 @@
  * operator login SEKALI, bukan tiap kali rekap.
  *
  * KEAMANAN: view ini memuat halaman pihak ketiga. contextIsolation aktif,
- * nodeIntegration mati, sandbox aktif. Satu-satunya jalan balik adalah
- * `window.resoScrap.click(nonce)` dari preload khusus; main memverifikasi nonce
- * yang di-inject ulang setiap halaman dimuat (tidak bisa dipalsukan console.log).
+ * nodeIntegration mati, sandbox aktif. Klik tombol Scrap diverifikasi di main
+ * process (asal WebContents host + domain + debounce). Navigasi dibatasi domain.
  *
  * Tampilan: view default-nya disembunyikan (dipakai runner), tapi bisa diangkat
  * jadi browser embedded yang terlihat lewat showHost()/hideHost()/setHostBounds().
@@ -22,41 +21,45 @@ import {
   type Session,
   type WebContents,
 } from 'electron'
+import { existsSync } from 'fs'
 import { join } from 'path'
-import { randomUUID } from 'crypto'
 import { IPC } from '../ipc/contracts'
 import type { Platform } from '../../src/shared/types'
+import { isAllowedScrapeUrl } from '../../src/shared/platform'
 
 /** Ukuran awal view tersembunyi — halaman butuh viewport wajar agar lazy-load jalan. */
 const VIEW_WIDTH = 1280
 const VIEW_HEIGHT = 900
 
+/**
+ * UA Chrome biasa (tanpa "Electron/xx") dipakai supaya TikTok/Instagram tidak
+ * menganggap browser sebagai klien otomatis dan memaksa logout/checkpoint.
+ */
+const DESKTOP_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36'
+
+/** Cookie sesi yang tidak punya expiry tidak tersimpan di disk — ubah jadi persisten. */
+const COOKIE_TTL_SECONDS = 365 * 24 * 60 * 60
+const lastCookieSync = new Map<Platform, number>()
+
 /** id elemen tombol — dipakai untuk idempotensi injeksi. */
 const SCRAP_BUTTON_ID = '__reso_scrap_btn'
 
-/** Riwayat nonce terakhir per platform (menoleransi race event navigasi). */
-const scrapNonce = new Map<Platform, string[]>()
-
-function nonceFor(platform: Platform): string {
-  const list = scrapNonce.get(platform)
-  if (list && list.length > 0) return list[0]
-  const fresh = randomUUID()
-  scrapNonce.set(platform, [fresh])
-  return fresh
-}
-
 /**
  * Script injeksi. Tombol fixed di kanan-atas, kontras tinggi, z-index maksimal.
- * Klik mengirim nonce lewat preload `window.resoScrap.click`. MutationObserver
+ * Klik diteruskan lewat preload `window.resoScrap.click`. MutationObserver
  * memasang ulang tombol bila halaman SPA mengganti DOM tanpa navigasi.
  */
-function buildScrapButtonScript(nonce: string): string {
+function buildScrapButtonScript(): string {
   return `
 (function () {
   var ID = '${SCRAP_BUTTON_ID}';
-  var NONCE = ${JSON.stringify(nonce)};
   function mount() {
-    if (document.getElementById(ID)) return;
+    // Injeksi baru mengganti tombol & observer lama supaya tidak ada dua
+    // tombol Scrap bertumpuk setelah SPA mengganti DOM.
+    try { if (window.__resoScrapMO) window.__resoScrapMO.disconnect(); } catch (_) {}
+    var old = document.getElementById(ID);
+    if (old && old.remove) old.remove();
     if (!document.body) return;
     var btn = document.createElement('button');
     btn.id = ID;
@@ -78,9 +81,22 @@ function buildScrapButtonScript(nonce: string): string {
       'opacity:0.94'
     ].join(';'));
     btn.addEventListener('click', function (e) {
+      // Tolak klik programatik dari script halaman (el.click()). Hanya klik
+      // pengguna sungguhan yang diteruskan ke main process.
+      if (!e.isTrusted) return;
+      // Main memakai debounce 2 dtk. Beri umpan balik di tombol supaya klik
+      // kedua tidak terasa "mati" tanpa sebab.
+      if (btn.getAttribute('data-busy') === '1') return;
       e.preventDefault();
       e.stopPropagation();
-      try { if (window.resoScrap) window.resoScrap.click(NONCE); } catch (_) {}
+      btn.setAttribute('data-busy', '1');
+      var label = btn.textContent;
+      btn.textContent = 'Diproses…';
+      window.setTimeout(function () {
+        btn.setAttribute('data-busy', '0');
+        btn.textContent = label;
+      }, 2200);
+      try { if (window.resoScrap) window.resoScrap.click(); } catch (_) {}
     }, true);
     document.body.appendChild(btn);
   }
@@ -91,6 +107,7 @@ function buildScrapButtonScript(nonce: string): string {
   try {
     var mo = new MutationObserver(function () { if (!document.getElementById(ID)) mount(); });
     mo.observe(document.documentElement || document, { childList: true, subtree: true });
+    window.__resoScrapMO = mo;
   } catch (_) {}
 })();
 `
@@ -130,6 +147,22 @@ function resolveWindow(): BrowserWindow | null {
   return win ?? null
 }
 
+/**
+ * Preload browser internal punya beberapa lokasi sah tergantung cara app dijalankan:
+ * - packaged: <app.asar>/assets/webview-preload.cjs
+ * - dev/preview dari out/main/index.js: <repo>/assets/webview-preload.cjs
+ * - root proyek saat dijalankan langsung
+ */
+function resolveScrapPreload(): string {
+  const candidates = [
+    join(app.getAppPath(), 'assets', 'webview-preload.cjs'),
+    join(__dirname, '..', '..', 'assets', 'webview-preload.cjs'),
+    join(__dirname, '..', 'assets', 'webview-preload.cjs'),
+    join(process.cwd(), 'assets', 'webview-preload.cjs'),
+  ]
+  return candidates.find((p) => existsSync(p)) ?? candidates[0]!
+}
+
 /** Hanya navigasi http(s) yang diizinkan. */
 function isHttpUrl(raw: string): boolean {
   if (!raw) return false
@@ -150,7 +183,44 @@ function ensureSession(platform: Platform): Session {
   // Halaman rekap tidak butuh kamera/mikrofon/notifikasi/geolokasi.
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false))
   ses.setPermissionCheckHandler(() => false)
+  ses.setUserAgent(DESKTOP_UA)
   return ses
+}
+
+/**
+ * Simpan cookie "session" ke disk dengan expiry jauh di depan. Tanpa ini,
+ * cookie auth yang tidak punya expirationDate hilang setiap aplikasi ditutup
+ * dan operator harus login ulang (terasa seperti sering logout).
+ */
+function persistSessionCookies(platform: Platform): void {
+  const now = Date.now()
+  if (now - (lastCookieSync.get(platform) ?? 0) < 60_000) return
+  lastCookieSync.set(platform, now)
+  const ses = session.fromPartition(partitionFor(platform))
+  void ses.cookies.get({}).then((cookies) => {
+    for (const cookie of cookies) {
+      if (cookie.expirationDate && cookie.expirationDate > now / 1000) continue
+      const domain = cookie.domain.replace(/^\./, '')
+      const url = `${cookie.secure ? 'https' : 'http'}://${domain}${cookie.path || '/'}`
+      void ses.cookies
+        .set({
+          url,
+          name: cookie.name,
+          value: cookie.value,
+          domain: cookie.domain,
+          path: cookie.path,
+          secure: cookie.secure,
+          httpOnly: cookie.httpOnly,
+          sameSite: cookie.sameSite,
+          expirationDate: Math.floor(now / 1000) + COOKIE_TTL_SECONDS,
+        })
+        .catch(() => {
+          /* cookie khusus yang tidak bisa ditulis ulang — abaikan */
+        })
+    }
+  }).catch(() => {
+    /* session belum siap — coba lagi saat halaman berikutnya */
+  })
 }
 
 /** Kirim status browser ke renderer (address bar + spinner). */
@@ -164,11 +234,11 @@ function broadcastNav(platform: Platform, wc: WebContents): void {
   notifyRenderer(IPC.scrapeBrowserNavigated, { platform, url: wc.getURL() || '' })
 }
 
-/** Injeksi script dengan nonce baru ke satu webContents. */
+/** Injeksi script tombol Scrap ke satu webContents. */
 function injectInto(wc: WebContents, platform: Platform): void {
   if (!wc || wc.isDestroyed()) return
   try {
-    void wc.executeJavaScript(buildScrapButtonScript(nonceFor(platform))).catch(() => {
+    void wc.executeJavaScript(buildScrapButtonScript()).catch(() => {
       /* halaman navigasi sebelum injeksi selesai */
     })
   } catch {
@@ -176,20 +246,14 @@ function injectInto(wc: WebContents, platform: Platform): void {
   }
 }
 
-/** Event host: nonce baru + injeksi tiap load, dan siaran navigasi/loading. */
+/** Event host: injeksi tombol tiap load, siaran navigasi, & jaga sesi login. */
 function wireHostEvents(platform: Platform, view: WebContentsView): void {
   const wc = view.webContents
 
-  // Nonce diganti SEBELUM halaman dimuat, lalu dipakai semua injeksi untuk
-  // halaman itu. Kalau diganti setelah injeksi, tombol menyimpan nonce lama
-  // dan kliknya selalu ditolak (bug yang ditemukan saat uji postingan nyata).
-  const newNonce = (): void => {
-    const list = scrapNonce.get(platform) ?? []
-    scrapNonce.set(platform, [randomUUID(), ...list].slice(0, 4))
-  }
+  // Pasang ulang tombol setiap halaman selesai dimuat / berpindah di dalam SPA.
   const onSettled = (): void => {
     if (!isHttpUrl(wc.getURL())) return
-    if (!scrapNonce.has(platform)) newNonce()
+    persistSessionCookies(platform)
     injectInto(wc, platform)
     broadcastNav(platform, wc)
     notifyRenderer(IPC.scrapeBrowserLoading, { platform, loading: false })
@@ -197,11 +261,9 @@ function wireHostEvents(platform: Platform, view: WebContentsView): void {
   wc.on('did-finish-load', onSettled)
   wc.on('did-navigate-in-page', onSettled)
   wc.on('did-navigate', () => {
-    newNonce()
     broadcastNav(platform, wc)
   })
   wc.on('did-start-loading', () => {
-    newNonce()
     notifyRenderer(IPC.scrapeBrowserLoading, { platform, loading: true })
   })
 }
@@ -219,7 +281,7 @@ export function getHost(win: BrowserWindow, platform: Platform): HostHandle {
   const view = new WebContentsView({
     webPreferences: {
       partition: partitionFor(platform),
-      preload: join(app.getAppPath(), 'assets', 'webview-preload.cjs'),
+      preload: resolveScrapPreload(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -249,6 +311,9 @@ export function showHost(
 ): void {
   const win = resolveWindow()
   if (!win) return
+  // Pastikan hanya satu WebContentsView yang terlihat — jika tidak, view lama
+  // tetap menumpuk di atas konten saat operator berpindah menu/platform.
+  hideHost()
   const host = getHost(win, platform)
   host.view.setBounds(bounds)
   host.view.setVisible(true)
@@ -271,9 +336,9 @@ export function setHostBounds(bounds: { x: number; y: number; width: number; hei
   }
 }
 
-/** Muat URL http(s) ke view platform (diabaikan kalau bukan http(s)). */
+/** Muat URL ke view platform — HANYA domain social yang diizinkan. */
 export function loadHost(platform: Platform, url: string): void {
-  if (!isHttpUrl(url)) return
+  if (!isAllowedScrapeUrl(url, platform)) return
   const win = resolveWindow()
   if (!win) return
   const host = getHost(win, platform)
@@ -294,12 +359,6 @@ export function getHostUrl(platform: Platform): string {
   return host.view.webContents.getURL() || ''
 }
 
-/** Injeksi manual tombol Scrap ke halaman yang sedang dimuat. */
-export function injectScrapButton(platform: Platform): void {
-  const host = hosts.get(platform)
-  if (host) injectInto(host.view.webContents, platform)
-}
-
 /** Main memanggil ini setelah ipc `reso:scrap:click` terveraksi dari host. */
 export function notifyScrapClick(platform: Platform): void {
   for (const cb of scrapSubscribers) {
@@ -309,11 +368,6 @@ export function notifyScrapClick(platform: Platform): void {
       /* subscriber error tidak boleh memutus yang lain */
     }
   }
-}
-
-/** Verifikasi nonce klik terhadap nonce halaman aktif platform. */
-export function verifyScrapClick(platform: Platform, nonce: unknown): boolean {
-  return typeof nonce === 'string' && nonce.length > 8 && (scrapNonce.get(platform) ?? []).includes(nonce)
 }
 
 /** Platform asal sebuah webContents (dipakai main saat menerima IPC klik). */
@@ -356,33 +410,6 @@ export function onScrapClick(cb: ScrapCallback): () => void {
   return () => {
     scrapSubscribers.delete(cb)
   }
-}
-
-/* ------------------------------------------------------------------ */
-/* Export lama (dipertahankan)                                         */
-/* ------------------------------------------------------------------ */
-
-export function destroyHost(platform: Platform): void {
-  const host = hosts.get(platform)
-  if (!host) return
-  hosts.delete(platform)
-  visiblePlatforms.delete(platform)
-  if (!host.view.webContents.isDestroyed()) {
-    try {
-      host.view.webContents.close()
-    } catch {
-      /* sudah mati */
-    }
-  }
-}
-
-export function destroyAllHosts(): void {
-  for (const platform of [...hosts.keys()]) destroyHost(platform)
-}
-
-/** Berapa host aktif — dipakai smoke test & diagnosa UI. */
-export function activeHostCount(): number {
-  return hosts.size
 }
 
 /** Main process memakai ini agar navigasi view scraper tidak dibuka ke browser OS. */
