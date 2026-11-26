@@ -18,6 +18,8 @@ const api = {
     setBounds: (bounds: unknown): Promise<boolean> => ipcRenderer.invoke(IPC.scrapeSetBounds, bounds),
     navigate: (platform: string, url: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC.scrapeNavigate, platform, url),
+    openOwnProfile: (platform: string): Promise<string> =>
+      ipcRenderer.invoke(IPC.scrapeBrowserOwnProfile, platform),
     back: (platform: string): Promise<boolean> => ipcRenderer.invoke(IPC.scrapeBrowserBack, platform),
     forward: (platform: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC.scrapeBrowserForward, platform),

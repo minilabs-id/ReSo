@@ -85,6 +85,8 @@ export interface ResoScrapeBrowserBridge {
   closeBrowser: () => Promise<boolean>
   setBounds: (bounds: unknown) => Promise<boolean>
   navigate: (platform: string, url: string) => Promise<boolean>
+  /** Arahkan browser ke profil akun yang sedang login; return URL akhir. */
+  openOwnProfile: (platform: string) => Promise<string>
   getUrl: (platform: string) => Promise<string>
   back: (platform: string) => Promise<boolean>
   forward: (platform: string) => Promise<boolean>
@@ -168,6 +170,16 @@ export async function openScrapeBrowser(
     return await window.reso!.browser.openBrowser(platform, bounds)
   } catch {
     return false
+  }
+}
+
+/** Buka halaman profil akun sendiri (default pembukaan browser internal). */
+export async function openOwnProfile(platform: string): Promise<string> {
+  if (!isElectron) return ''
+  try {
+    return await window.reso!.browser.openOwnProfile(platform)
+  } catch {
+    return ''
   }
 }
 

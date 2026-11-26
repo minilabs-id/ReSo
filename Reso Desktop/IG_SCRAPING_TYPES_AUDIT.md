@@ -10,6 +10,8 @@
 | Foto, 2278 komentar | `instagram.com/p/Df12rYekjTt/` | **607 username** unik → rekap harian |
 | Carousel, 169 komentar | `instagram.com/p/DgCratnknyJ/` | **121 username** → rekap harian |
 | Carousel, 11 komentar | `instagram.com/p/DgAJW8kkv0o/` | **5 username** → rekap harian |
+| Reel, 376 komentar | `instagram.com/reels/Df_iOFQSKqW/` | **198 username** → rekap harian |
+| Reel, 262 komentar | `instagram.com/reels/DeMhGZeSlri/` | **194 username** → rekap harian |
 | Reel (memang 0 komentar) | `instagram.com/reels/Df1KNKmPCUm/` | **0 username**, pesan: "Postingan ini tidak punya komentar." |
 
 Semua angka di atas berasal dari simulasi UI sungguhan: buka panel Ambil Nama →

@@ -11,6 +11,7 @@ import { sanitizeEngineOptions, TEMPLATE_TTL_MS } from './template'
 import { applyStatePatch, defaultStateFor, newRunId } from './state'
 import { reduce } from './run-state'
 import { doneMessage } from './messages'
+import { OWN_PROFILE_ENTRY, instagramOwnUsernameFromHtml, tiktokOwnHrefFromHtml } from './own-profile'
 
 let n = 0
 function ok(cond: boolean, label: string): void {
@@ -140,6 +141,23 @@ ok(doneMessage('rate_limit', 3, 'facebook').includes('429'), 'pesan rate limit')
 ok(doneMessage('blocked', 0, 'instagram').includes('403'), 'pesan blocked IG')
 ok(doneMessage('error', 0, 'facebook', { extra: 'boom' }) === 'boom', 'pesan error pakai extra')
 ok(doneMessage('tidak_dikenal', 0, 'facebook') === 'Siap.', 'pesan fallback')
+
+// ===================== profil sendiri (default browser) =====================
+eq(OWN_PROFILE_ENTRY.facebook, 'https://www.facebook.com/me/', 'entry FB = redirect /me/')
+eq(OWN_PROFILE_ENTRY.instagram, 'https://www.instagram.com/', 'entry IG = homepage untuk deteksi user')
+eq(OWN_PROFILE_ENTRY.tiktok, 'https://www.tiktok.com/', 'entry TT = homepage untuk deteksi profil')
+eq(
+  instagramOwnUsernameFromHtml('x "username":"feed_user" y "username":"desajember","is_supervised_user":false,"should_show_public_contacts":false z'),
+  'desajember',
+  'username IG dengan penanda user sendiri dikenali'
+)
+eq(instagramOwnUsernameFromHtml('"username":" orang lain "'), '', 'username IG biasa tidak dijadikan profil sendiri')
+eq(
+  tiktokOwnHrefFromHtml('<a data-e2e="nav-profile" href="/@desajember">Profil</a>'),
+  '/@desajember',
+  'tautan profil TikTok dikenali'
+)
+eq(tiktokOwnHrefFromHtml('<div>tanpa tautan profil</div>'), '', 'tanpa tautan profil TikTok → kosong')
 
 // ===================== allowlist host (regresi suffix-spoof) =====================
 ok(isHostAllowed('facebook.com', 'facebook.com'), 'host exact diterima')

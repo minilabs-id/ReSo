@@ -100,6 +100,12 @@ mengembalikan daftar komentar induk, bukan balasan. Jangan dipakai.
 | `/p/DgCratnknyJ/` | carousel, 169 komentar | **121 username** masuk rekap |
 | `/p/DgAJW8kkv0o/` | carousel, 11 komentar | **5 username** masuk rekap |
 | `/reels/Df1KNKmPCUm/` | reel | **0 komentar memang** (bukan gagal) — API balas `comment_count: 0` |
+| `/reels/Df_iOFQSKqW/` | reel, 376 komentar | **198 username** → rekap harian |
+| `/reels/DeMhGZeSlri/` | reel, 262 komentar | **194 username** → rekap harian |
+
+Reel ber-komentar ditemukan lewat `/api/v1/discover/topical_explore/` (endpoint
+`/api/v1/clips/user/` kena 429 pada sesi uji). Jalur reel memakai endpoint & pk
+yang sama dengan postingan `/p/`, jadi tidak ada kode khusus reel.
 
 Pengaturan profil uji: `maxScrollRounds: 42`, `captureTimeoutMs: 35000`.
 607 nama ≈ 42 halaman × 15, cocok dengan batas halaman → semua nama yang

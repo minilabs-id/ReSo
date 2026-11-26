@@ -19,6 +19,11 @@ import {
 import { IPC } from '../ipc/contracts'
 import type { Platform } from '../../src/shared/types'
 import { isAllowedScrapeUrl } from '../../src/shared/platform'
+import {
+  OWN_PROFILE_ENTRY,
+  instagramOwnUsernameFromHtml,
+  tiktokOwnHrefFromHtml,
+} from '../../src/shared/own-profile'
 
 /** Ukuran awal view tersembunyi — halaman butuh viewport wajar agar lazy-load jalan. */
 const VIEW_WIDTH = 1280
@@ -236,6 +241,68 @@ export function loadHost(platform: Platform, url: string): void {
   } catch {
     /* URL tidak bisa dimuat */
   }
+}
+
+/** Script deteksi profil — fungsi murni diserialisasi supaya uji & runtime sama. */
+const IG_OWN_JS = `(() => {
+  const user = (${instagramOwnUsernameFromHtml.toString()})(document.documentElement.innerHTML);
+  return user ? '/' + user + '/' : '';
+})()`
+
+const TT_OWN_JS = `(() => {
+  const html = document.documentElement.innerHTML;
+  let href = (${tiktokOwnHrefFromHtml.toString()})(html);
+  if (!href) {
+    const a = document.querySelector('a[data-e2e="nav-profile"][href^="/@"]')
+      || document.querySelector('a[href^="/@"]');
+    href = a ? (a.getAttribute('href') || '') : '';
+  }
+  return href;
+})()`
+
+async function findOwnHref(wc: WebContents, script: string, timeoutMs: number): Promise<string> {
+  const deadline = Date.now() + timeoutMs
+  while (Date.now() < deadline) {
+    try {
+      const v = await wc.executeJavaScript(script, true)
+      if (typeof v === 'string' && v.startsWith('/')) return v
+    } catch {
+      /* halaman belum selesai hidrasi */
+    }
+    await new Promise((r) => setTimeout(r, 500))
+  }
+  return ''
+}
+
+/**
+ * Default pembukaan browser: profil akun yang sedang login, bukan feed/homepage.
+ * Mengembalikan URL akhir agar UI bisa menampilkannya.
+ */
+export async function navigateToOwnProfile(platform: Platform): Promise<string> {
+  const host = hosts.get(platform)
+  if (!host || host.view.webContents.isDestroyed()) return ''
+  const wc = host.view.webContents
+  const entry = OWN_PROFILE_ENTRY[platform]
+  try {
+    await wc.loadURL(entry)
+  } catch {
+    return getHostUrl(platform) || ''
+  }
+  if (platform === 'facebook') return getHostUrl(platform) || entry
+
+  const href = await findOwnHref(wc, platform === 'instagram' ? IG_OWN_JS : TT_OWN_JS, 8000)
+  if (href) {
+    const absolute = new URL(href, entry).toString()
+    if (isAllowedScrapeUrl(absolute, platform)) {
+      try {
+        await wc.loadURL(absolute)
+      } catch {
+        /* biarkan halaman sebelumnya */
+      }
+      return getHostUrl(platform) || absolute
+    }
+  }
+  return getHostUrl(platform) || entry
 }
 
 /** URL saat ini di view platform, atau '' bila belum ada. */

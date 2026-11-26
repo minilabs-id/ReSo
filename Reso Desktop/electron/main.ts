@@ -11,7 +11,7 @@ import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDail
 import { getSettings, setSettings, resetSettings, restoreSettings } from './store/settings-store'
 import { SCHEMA_VERSION } from './db/schema'
 import { runController, setScrapeMainWindow } from './ipc/run-controller'
-import { getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, platformForContents, setHostBounds, showHost } from './scrape/scraper-host'
+import { getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, navigateToOwnProfile, platformForContents, setHostBounds, showHost } from './scrape/scraper-host'
 import { isAllowedScrapeUrl } from '../src/shared/platform'
 import type { Platform } from '../src/shared/types'
 import * as db from './db/database'
@@ -277,6 +277,10 @@ function registerIpc(): void {
     if (!isAllowedScrapeUrl(url, platform)) return false
     loadHost(platform, url)
     return true
+  })
+  safeHandle(IPC.scrapeBrowserOwnProfile, async (_event, platform: unknown) => {
+    if (!isPlatform(platform)) return ''
+    return navigateToOwnProfile(platform)
   })
   safeHandle(IPC.scrapeBrowserBack, (_event, platform: unknown) => {
     if (!isPlatform(platform)) return false

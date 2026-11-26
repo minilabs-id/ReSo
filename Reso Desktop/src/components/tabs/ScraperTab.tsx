@@ -13,6 +13,7 @@ import {
   closeScrapeBrowser,
   setScrapeBrowserBounds,
   navigateScrapeBrowser,
+  openOwnProfile,
   browserBack,
   browserForward,
   browserReload,
@@ -176,19 +177,19 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
         if (!cancelled) setBrowserError('Browser internal gagal dibuka — coba ganti platform.');
         return;
       }
-      // Pulihkan halaman yang sedang terbuka di host. Bila host belum punya
-      // halaman, pakai halaman awal yang disimpan operator (profil/postingan
-      // sendiri), baru jatuh ke homepage platform.
-      const current = await getScrapeBrowserUrl(platform);
-      const shouldKeep = isAllowedScrapeUrl(current, platform);
-      let target = shouldKeep ? current : DEFAULT_URL[platform];
-      if (!shouldKeep) {
-        const settings = await getSettings();
-        const preferred = settings?.[HOME_KEY[platform]] as string | undefined;
-        if (typeof preferred === 'string' && isAllowedScrapeUrl(preferred, platform)) {
-          target = preferred;
-        }
+      // Default pembukaan browser = profil akun sendiri (IG/FB/TikTok).
+      // Preferensi eksplisit operator (tombol "Jadikan halaman awal") menimpa.
+      const settings = await getSettings();
+      const preferred = settings?.[HOME_KEY[platform]] as string | undefined;
+      let target: string;
+      if (typeof preferred === 'string' && isAllowedScrapeUrl(preferred, platform)) {
+        target = preferred;
         await navigateScrapeBrowser(platform, target);
+      } else {
+        target = await openOwnProfile(platform);
+        if (!target || cancelled) {
+          target = (await getScrapeBrowserUrl(platform)) || DEFAULT_URL[platform];
+        }
       }
       if (cancelled) return;
       setBrowserUrl(target);
@@ -489,8 +490,8 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
               )}
             </div>
             <p className="text-[11px] text-slate-500">
-              Buka satu postingan → buka daftar komentar → klik <b>Ambil nama dari halaman ini</b>.
-              Nama langsung masuk rekap harian.
+              Browser otomatis dibuka di profil sendiri. Buka satu postingan → klik
+              <b> Ambil nama dari halaman ini</b>. Nama langsung masuk rekap harian.
             </p>
           </div>
 
