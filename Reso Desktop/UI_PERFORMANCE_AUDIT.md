@@ -95,3 +95,19 @@ Tidak ada masalah performa UI yang mengganggu: membuka modal, mengetik, dan
 pindah menu hangat terasa instan; tabel 100 baris render < 4 ms. Perbaikan terakhir menghilangkan
 pergeseran visual yang tersisa (CLS ~0), sehingga pengalaman terasa stabil meski
 modul lazy masih dimuat di latar belakang.
+
+---
+
+## 8. Tata ulang halaman Ambil Nama (tambahan)
+
+| Elemen | Sebelum | Sesudah |
+|--------|---------|---------|
+| Judul & pemilih platform | 2 baris (y=40, y=99) | **1 baris** (y=40, y=47) |
+| Toolbar browser | y=160 | **y=116** |
+| Baris aksi | y=216 | **y=172** |
+| Browser | 1025×581, y=383 | 713×581, y=339 |
+| Daftar "Terakhir diambil" | y=1028 (**di bawah lipatan**) | **y=339, bersebelahan dengan browser** (300 px) |
+
+Hasil: semua fitur (pemilih platform, alamat, aksi, status, browser, daftar hasil)
+terlihat dalam satu layar tanpa scroll. Browser lebih sempit, tetapi panel hasil
+tidak lagi tersembunyi di bawah halaman; E2E smoke 10/10 lolos.

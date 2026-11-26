@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Bookmark, Loader2 } from 'lucide-react';
+import { Badge } from '../ui/badge';
 import { Button } from '../ui/button';
 import { Card } from '../ui/card';
 import { Input } from '../ui/input';
@@ -305,14 +306,14 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
 
   return (
     <div className="p-4 lg:p-5 space-y-3 max-w-[1400px]">
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">Ambil Nama Komentar</h1>
-        <p className="text-[11px] text-slate-500 mt-0.5">
-          Ambil nama komentator langsung dari browser bawaan aplikasi.
-        </p>
-      </div>
-
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Pilih platform">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">Ambil Nama Komentar</h1>
+          <p className="text-[11px] text-slate-500 mt-0.5">
+            Ambil nama komentator langsung dari browser bawaan aplikasi.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2" role="group" aria-label="Pilih platform">
         {(Object.keys(PLATFORM_LABEL_FULL) as Platform[]).map((p) => (
           <Button
             key={p}
@@ -324,6 +325,7 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
             {PLATFORM_LABEL_FULL[p]}
           </Button>
         ))}
+        </div>
       </div>
 
       <Card className="p-4 space-y-2">
@@ -458,44 +460,53 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
           </div>
         </div>
 
-        <div
-          ref={browserRef}
-          className="relative h-[clamp(520px,calc(100dvh-330px),900px)] w-full rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
-          role="region"
-          aria-label={`Browser ${PLATFORM_LABEL_FULL[platform]}`}
-        >
-          {browserLoading && (
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
-              <Loader2 size={22} className="animate-spin text-slate-500" aria-hidden />
+        {/* Browser besar di kiri, daftar hasil di kanan — semua terlihat tanpa scroll. */}
+        <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] gap-3 items-start">
+          <div className="min-w-0 space-y-2">
+            <div
+              ref={browserRef}
+              className="relative h-[clamp(520px,calc(100dvh-330px),900px)] w-full rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
+              role="region"
+              aria-label={`Browser ${PLATFORM_LABEL_FULL[platform]}`}
+            >
+              {browserLoading && (
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-white/60">
+                  <Loader2 size={22} className="animate-spin text-slate-500" aria-hidden />
+                </div>
+              )}
             </div>
-          )}
-        </div>
-        <p className="text-[11px] text-slate-500">
-          Buka postingan/video → buka daftar komentar → klik <b>Scrap</b> di kanan atas halaman.
-          Tombol <b>Ambil dari halaman ini</b> hanya cadangan bila tombol di halaman tidak muncul.
-        </p>
-      </Card>
+            <p className="text-[11px] text-slate-500">
+              Buka postingan/video → buka daftar komentar → klik <b>Scrap</b> di kanan atas halaman.
+              Tombol <b>Ambil dari halaman ini</b> hanya cadangan.
+            </p>
+          </div>
 
-      <Card className="p-4 space-y-2">
-        <div className="flex items-center gap-2">
-          <h2 className="text-sm font-bold text-slate-900">
-            Terakhir diambil — {state.count} {wordFor(platform)}
-            {isStale && <span className="ml-1 font-semibold text-slate-500 text-[11px]">(sesi lalu)</span>}
-          </h2>
+          <Card className="flex h-full min-h-[300px] flex-col p-4 xl:h-[clamp(520px,calc(100dvh-330px),900px)]">
+            <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
+              <h2 className="text-sm font-bold text-slate-900">
+                Terakhir diambil
+                {isStale && <span className="ml-1 text-[11px] font-semibold text-slate-500">(sesi lalu)</span>}
+              </h2>
+              <Badge variant="outline" className="shrink-0 text-[11px] font-bold">
+                {state.count} {wordFor(platform)}
+              </Badge>
+            </div>
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto">
+              {state.count === 0 ? (
+                <p className="py-8 text-center text-[11px] text-slate-500">Belum ada hasil.</p>
+              ) : (
+                <ol className="divide-y divide-slate-100 rounded-lg border border-slate-100">
+                  {state.names.map((name, i) => (
+                    <li key={`${name}-${i}`} className="flex gap-3 px-3 py-2 text-[11px] text-slate-700">
+                      <span className="w-8 shrink-0 text-right tabular-nums text-slate-300">{i + 1}</span>
+                      <span className="break-words">{name}</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          </Card>
         </div>
-
-        {state.count === 0 ? (
-          <p className="text-[11px] text-slate-500 py-6 text-center">Belum ada hasil.</p>
-        ) : (
-          <ol className="divide-y divide-slate-100 max-h-60 overflow-y-auto rounded-lg border border-slate-100">
-            {state.names.map((name, i) => (
-              <li key={`${name}-${i}`} className="px-3 py-2 text-[11px] text-slate-700 flex gap-3">
-                <span className="text-slate-300 tabular-nums w-8 shrink-0 text-right">{i + 1}</span>
-                <span className="break-words">{name}</span>
-              </li>
-            ))}
-          </ol>
-        )}
       </Card>
     </div>
   );
