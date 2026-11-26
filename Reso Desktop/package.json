@@ -3,7 +3,7 @@
   "description": "ReSo — Rekap Engagement Sosmed (aplikasi desktop offline)",
   "author": "Diskominfo",
   "private": true,
-  "version": "1.0.90",
+  "version": "1.0.91",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {

@@ -122,3 +122,51 @@ fitur bertambah.
 
 Pengukuran ulang: heap 9,5 MB, 164 node DOM, reload 427 ms — tidak ada regresi.
 Cold start masih ~5,4 s karena didominasi startup Electron, bukan renderer.
+
+---
+
+## 8. Audit mendalam (CPU profile, IPC, data sintetis)
+
+### Metode
+CPU profile CDP saat 6 kali perpindahan menu; benchmark IPC 8–12 iterasi;
+data sintetis **200 pegawai + 120 hari rekap** di profil uji; pengukuran render
+(`requestAnimationFrame` ×2) dan heap sebelum/sesudah.
+
+### Hasil sebelum optimasi lanjutan
+| Metrik | Nilai |
+|--------|-------|
+| IPC baseline | getAll 1,59 ms · employees 0,28 ms · dailyRange 0,23 ms · settings 0,22 ms |
+| IPC dengan data besar | employees 4,13 ms · dailyRange 3,13 ms |
+| Render dengan 200 pegawai | Beranda 5,2 ms · Bulanan 16 ms · Kalender 26,5 ms · Data 17,7 ms |
+| Heap sebelum/sesudah seed | 12,78 → **12,78 MB** (tidak ada pertumbuhan) |
+| `batchSave` 320 operasi | 40,9 ms |
+| CPU top (selain idle) | **`getLocalISODate` 113,7 ms** · `(program)` 530,7 ms · GC 23,4 ms |
+| First visit Pengaturan | **625 ms** |
+
+### Temuan baru
+| # | Masalah | Penjelasan |
+|---|---------|-----------|
+| D1 | `getLocalISODate()` memakai `toLocaleDateString` — membuat `Intl` formatter baru tiap panggil. Benchmark: 20.000 panggil = **1.467 ms** vs formatter cache **80,6 ms** (~18x). | Jadi hot spot CPU saat render kalender/laporan. |
+| D2 | First visit Pengaturan 625 ms ternyata **bukan ukuran chunk** (SettingsTab hanya 15,9 KB), tapi inisialisasi `electron-store` saat `getSettings()` pertama. | Juga memperlambat run scraping pertama. |
+| D3 | `parseLocalISODate()` juga memanggil `toLocaleDateString` untuk validasi. | Ikut hot path. |
+
+### Perbaikan diterapkan
+- `src/lib/date.ts`: `ISO_FORMATTER` statis (`Intl.DateTimeFormat('en-CA', …)`) dipakai `getLocalISODate()` **dan** validasi `parseLocalISODate()`.
+- Prefetch chunk lazy 1,2 dtk setelah mount (`InputModal`, `SettingsTab`, `UnmatchedReview`, `EmployeeManager`).
+- `electron/main.ts`: `getSettings()` dipanggil sekali saat `app.whenReady()` untuk hangatkan electron-store.
+
+### Hasil sesudah
+| Metrik | Sebelum | Sesudah |
+|--------|---------|---------|
+| `getLocalISODate` di CPU top | 113,7 ms | **tidak muncul** |
+| `(program)` saat profil | 530,7 ms | **424,3 ms** (~20% lebih rendah) |
+| First visit Pengaturan | 625 ms | **310 ms** |
+| Kunjungan berikutnya | 7 ms | **9 ms** |
+| Render Kalender (200 pegawai) | 26,5 ms | 32,9 ms (dalam noise) |
+| IPC large | 4,13 / 3,13 ms | 3,45 / 2,30 ms |
+
+### Kesimpulan audit mendalam
+Tidak ada bottleneck memori atau IPC: dengan 200 pegawai & 120 hari,
+latensi IPC masih **< 4 ms** dan render di bawah **35 ms**. Satu-satunya hot
+spot nyata adalah formatter tanggal — sudah diperbaiki. Sisa latency terbesar
+adalah **startup Electron (~5,4 s)** yang berada di luar kendali renderer.

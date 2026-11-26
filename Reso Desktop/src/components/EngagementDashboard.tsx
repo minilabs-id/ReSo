@@ -73,6 +73,18 @@ export default function EngagementDashboard() {
     []
   );
 
+  // Hangatkan chunk lazy saat idle — kunjungan pertama ke Pengaturan/Input
+  // tidak perlu menunggu ~600 ms memuat modul.
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void import('./InputModal');
+      void import('./tabs/SettingsTab');
+      void import('../features/rekap/UnmatchedReview');
+      void import('./EmployeeManager');
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, []);
+
   // Auto-update: ambil status awal & dengarkan siaran dari main process.
   useEffect(() => {
     void getUpdateState().then(setUpdate);

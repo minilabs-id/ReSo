@@ -517,6 +517,9 @@ app.whenReady().then(() => {
   db.deleteSetting('meta_api')
   hardenSession()
   registerIpc()
+  // Hangatkan electron-store sekali saat start: akses pertama dari renderer
+  // (Pengaturan / runner scraper) tidak perlu menunggu baca file JSON.
+  getSettings()
   // Tombol "Scrap" yang di-inject ke halaman memicu run platform itu.
   onScrapClick((platform) => {
     // Satu sumber kebenaran: opsi dari state yang sudah disetel renderer lewat
