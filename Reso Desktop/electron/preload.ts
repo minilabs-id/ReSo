@@ -46,6 +46,17 @@ const api = {
     reset: (): Promise<ResoSettings> => ipcRenderer.invoke(IPC.settingsReset),
   },
 
+  updater: {
+    getState: (): Promise<unknown> => ipcRenderer.invoke(IPC.updateGetState),
+    check: (): Promise<boolean> => ipcRenderer.invoke(IPC.updateCheck),
+    install: (): Promise<boolean> => ipcRenderer.invoke(IPC.updateInstall),
+    onStateChanged: (cb: (state: unknown) => void): (() => void) => {
+      const listener = (_e: unknown, state: unknown): void => cb(state)
+      ipcRenderer.on(IPC.updateStateChanged, listener)
+      return () => ipcRenderer.removeListener(IPC.updateStateChanged, listener)
+    },
+  },
+
   scrape: {
     getAll: (): Promise<Record<Platform, NameState>> => ipcRenderer.invoke(IPC.scrapeGetAll),
     applyEvent: (platform: Platform, event: unknown): Promise<NameState | null> =>

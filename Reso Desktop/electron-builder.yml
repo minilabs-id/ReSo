@@ -1,5 +1,10 @@
 appId: fun.sekretariat.reso
 productName: ReSo
+publish:
+  provider: github
+  owner: minilabs-id
+  repo: ReSo
+  releaseType: release
 directories:
   output: release
   buildResources: assets

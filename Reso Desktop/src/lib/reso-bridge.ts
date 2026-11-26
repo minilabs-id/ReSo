@@ -102,12 +102,36 @@ export interface ScrapeHandoffPayload {
   unmatched: number
 }
 
+export type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'ready'
+  | 'not-available'
+  | 'error'
+
+export interface UpdateState {
+  status: UpdateStatus
+  version?: string
+  progress?: number
+  message?: string
+}
+
+interface ResoUpdateBridge {
+  getState: () => Promise<UpdateState>
+  check: () => Promise<boolean>
+  install: () => Promise<boolean>
+  onStateChanged: (cb: (state: UpdateState) => void) => () => void
+}
+
 declare global {
   interface Window {
     reso?: {
       platform: 'electron'
       browser: ResoScrapeBrowserBridge
       settings: ResoSettingsBridge
+      updater: ResoUpdateBridge
       data: ResoDataBridge
       scrape: {
         getAll: () => Promise<Record<string, NameState>>
@@ -336,4 +360,38 @@ export function onScrapeStateChanged(
 export function onScrapeHandoff(cb: (payload: ScrapeHandoffPayload) => void): () => void {
   if (!isElectron) return () => {}
   return window.reso!.scrape.onHandoff(cb)
+}
+
+// ===================== Auto-update (GitHub Releases) =====================
+
+export async function getUpdateState(): Promise<UpdateState> {
+  if (!isElectron) return { status: 'idle' }
+  try {
+    return await window.reso!.updater.getState()
+  } catch {
+    return { status: 'idle' }
+  }
+}
+
+export function onUpdateStateChanged(cb: (state: UpdateState) => void): () => void {
+  if (!isElectron) return () => {}
+  return window.reso!.updater.onStateChanged(cb)
+}
+
+export async function checkForUpdates(): Promise<boolean> {
+  if (!isElectron) return false
+  try {
+    return await window.reso!.updater.check()
+  } catch {
+    return false
+  }
+}
+
+export async function installUpdate(): Promise<boolean> {
+  if (!isElectron) return false
+  try {
+    return await window.reso!.updater.install()
+  } catch {
+    return false
+  }
 }

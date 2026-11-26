@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
+import { autoUpdater } from 'electron-updater'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseBrowserBounds } from './ipc/contracts'
@@ -68,6 +69,78 @@ function broadcastDbChanged(): void {
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) win.webContents.send(IPC.dbChanged)
   }
+}
+
+// ===================== Auto-update (GitHub Releases) =====================
+
+export type UpdateStatus =
+  | 'idle'
+  | 'checking'
+  | 'available'
+  | 'downloading'
+  | 'ready'
+  | 'not-available'
+  | 'error'
+
+export interface UpdateState {
+  status: UpdateStatus
+  version?: string
+  progress?: number
+  message?: string
+}
+
+let updateState: UpdateState = { status: 'idle' }
+
+function setUpdateState(patch: Partial<UpdateState>): void {
+  updateState = { ...updateState, ...patch }
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send(IPC.updateStateChanged, updateState)
+  }
+}
+
+async function checkForUpdates(): Promise<void> {
+  if (!app.isPackaged) return
+  try {
+    await autoUpdater.checkForUpdates()
+  } catch (err) {
+    setUpdateState({
+      status: 'error',
+      message: err instanceof Error ? err.message : 'Gagal memeriksa update',
+    })
+  }
+}
+
+/** Dipanggil sekali setelah app ready: cek otomatis tiap kali aplikasi dibuka. */
+function setupAutoUpdater(): void {
+  if (!app.isPackaged) return
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('checking-for-update', () =>
+    setUpdateState({ status: 'checking', message: 'Memeriksa update…' })
+  )
+  autoUpdater.on('update-available', (info) =>
+    setUpdateState({ status: 'available', version: info.version, message: `Versi ${info.version} tersedia` })
+  )
+  autoUpdater.on('update-not-available', (info) =>
+    setUpdateState({ status: 'not-available', version: info.version, message: 'Sudah versi terbaru' })
+  )
+  autoUpdater.on('download-progress', (progress) =>
+    setUpdateState({
+      status: 'downloading',
+      progress: Math.round(progress.percent),
+      message: `Mengunduh update… ${Math.round(progress.percent)}%`,
+    })
+  )
+  autoUpdater.on('update-downloaded', (info) =>
+    setUpdateState({ status: 'ready', version: info.version, message: `Versi ${info.version} siap dipasang` })
+  )
+  autoUpdater.on('error', (err) =>
+    setUpdateState({ status: 'error', message: err instanceof Error ? err.message : String(err) })
+  )
+
+  // Jeda beberapa detik agar startup tidak menunggu jaringan.
+  setTimeout(() => void checkForUpdates(), 4000)
 }
 
 function createWindow(): BrowserWindow {
@@ -350,6 +423,19 @@ function registerIpc(): void {
     broadcastDbChanged()
     return { ok: true as const }
   })
+
+  // Auto-update: cek manual & pasang versi yang sudah terunduh.
+  safeHandle(IPC.updateGetState, () => updateState)
+  safeHandle(IPC.updateCheck, () => {
+    if (!app.isPackaged) return false
+    void checkForUpdates()
+    return true
+  })
+  safeHandle(IPC.updateInstall, () => {
+    if (!app.isPackaged || updateState.status !== 'ready') return false
+    autoUpdater.quitAndInstall(false, true)
+    return true
+  })
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -378,6 +464,7 @@ app.whenReady().then(() => {
     })
   })
   createWindow()
+  setupAutoUpdater()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

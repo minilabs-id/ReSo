@@ -6,7 +6,13 @@ import { useLocal } from './LocalProvider';
 import { useAppLogo } from '../hooks/useAppLogo';
 import { cn } from '@/lib/utils';
 import { getLocalISODate, parseLocalISODate } from '../lib/date';
-import { onScrapeHandoff } from '../lib/reso-bridge';
+import {
+  onScrapeHandoff,
+  getUpdateState,
+  onUpdateStateChanged,
+  installUpdate,
+  type UpdateState,
+} from '../lib/reso-bridge';
 import { APP_VERSION } from '../lib/version';
 import {
   MAIN_NAV,
@@ -63,6 +69,12 @@ export default function EngagementDashboard() {
     []
   );
 
+  // Auto-update: ambil status awal & dengarkan siaran dari main process.
+  useEffect(() => {
+    void getUpdateState().then(setUpdate);
+    return onUpdateStateChanged(setUpdate);
+  }, []);
+
   const {
     currentDailyDate,
     setCurrentDailyDate,
@@ -100,6 +112,7 @@ export default function EngagementDashboard() {
   // dan Laporan Harian. Tidak ada lagi `selectedDate` yang berdiri sendiri.
   const currentDailyDateStr = getLocalISODate(currentDailyDate);
   const [isInputModalOpen, setIsInputModalOpen] = useState(false);
+  const [update, setUpdate] = useState<UpdateState>({ status: 'idle' });
 
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [dailySortMode, setDailySortMode] = useState<'name' | 'bidang'>('bidang');
@@ -430,12 +443,43 @@ export default function EngagementDashboard() {
           )}
         </div>
 
-        <div className="p-4 mt-auto border-t border-slate-200 bg-slate-50/80">
+        <div className="p-4 mt-auto border-t border-slate-200 bg-slate-50/80 space-y-2">
           <div className="flex items-center justify-between gap-2">
             <p className="text-[11px] font-medium text-slate-500">ReSo v{APP_VERSION}</p>
             <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
               Lokal
             </span>
+          </div>
+          {/* Slot tetap: status update tidak menggeser navigasi saat berubah. */}
+          <div className="flex min-h-[20px] items-center">
+            {update.status === 'ready' && (
+              <button
+                type="button"
+                onClick={() => void installUpdate()}
+                className="text-[11px] font-bold text-indigo-700 underline underline-offset-2 hover:text-indigo-900"
+                title={update.message}
+              >
+                Versi {update.version} siap — pasang sekarang
+              </button>
+            )}
+            {update.status === 'downloading' && (
+              <span className="text-[11px] font-medium text-slate-500">
+                Mengunduh update… {update.progress ?? 0}%
+              </span>
+            )}
+            {update.status === 'available' && (
+              <span className="text-[11px] font-medium text-slate-500">
+                Update {update.version} tersedia…
+              </span>
+            )}
+            {update.status === 'checking' && (
+              <span className="text-[11px] font-medium text-slate-500">Memeriksa update…</span>
+            )}
+            {update.status === 'error' && (
+              <span className="truncate text-[11px] font-medium text-rose-600" title={update.message}>
+                Gagal memeriksa update
+              </span>
+            )}
           </div>
         </div>
       </aside>

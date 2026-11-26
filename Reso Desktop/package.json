@@ -3,7 +3,7 @@
   "description": "ReSo — Rekap Engagement Sosmed (aplikasi desktop offline)",
   "author": "Diskominfo",
   "private": true,
-  "version": "1.0.86",
+  "version": "1.0.87",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
@@ -30,6 +30,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "electron-store": "^10.0.0",
+    "electron-updater": "^6.8.11",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "lucide-react": "^0.546.0",
