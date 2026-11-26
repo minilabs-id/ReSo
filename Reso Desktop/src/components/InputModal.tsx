@@ -7,7 +7,7 @@ import { Button } from './ui/button';
 import { toast } from '../lib/notify';
 import { TiktokIcon } from './icons/TiktokIcon';
 import { cn } from '@/lib/utils';
-import { useAuth } from './LocalProvider';
+import { useLocal } from './LocalProvider';
 import { useDialogA11y } from '../hooks/useDialogA11y';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { clearDraft, loadDraft, useDraftAutosave } from '../features/rekap/draftStorage';
@@ -60,7 +60,7 @@ export function InputModal({
   closeGuardRef,
   onOpenUnmatched,
 }: InputModalProps) {
-  const { user, db } = useAuth();
+  const { user, db } = useLocal();
   const dialogRef = useDialogA11y<HTMLDivElement>(open);
 
   // ── State lokal: mengetik di sini TIDAK me-render ulang app shell ──

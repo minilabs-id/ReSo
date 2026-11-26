@@ -232,7 +232,7 @@ export const SettingsTab: React.FC = () => {
           <div>
             <h2 className="text-sm font-semibold text-slate-900">Cadangkan & pulihkan</h2>
             <p className="text-xs text-slate-500 mt-0.5">
-              Cadangan JSON berisi pegawai, rekap harian, dan preferensi
+              Cadangan JSON berisi pegawai, rekap harian, dan preferensi scraper
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -323,7 +323,7 @@ export const SettingsTab: React.FC = () => {
       <ConfirmDialog
         open={importConfirm}
         title="Pulihkan data?"
-        description="Seluruh data saat ini (pegawai & rekap) akan ditimpa oleh isi berkas cadangan. Tindakan ini tidak dapat dibatalkan."
+        description="Seluruh data saat ini (pegawai, rekap, dan preferensi scraper) akan ditimpa oleh isi berkas cadangan. Tindakan ini tidak dapat dibatalkan."
         confirmLabel="Ya, timpa data"
         busy={importBusy}
         onConfirm={handleConfirmImport}

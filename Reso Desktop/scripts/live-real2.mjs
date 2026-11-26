@@ -41,7 +41,7 @@ for (const [platform, cfg] of Object.entries(POSTS)) {
   let st = null
   for (let i = 0; i < 30; i++) {
     await sleep(2000)
-    st = await app.ev(`window.reso.scrape.getState(${JSON.stringify(platform)})`, true)
+    st = await app.ev(`(async()=>{const a=await window.reso.scrape.getAll();return a[${JSON.stringify(platform)}]})()`, true)
     if (st && st.status !== 'running') break
   }
   out[platform] = { url, status: st?.status, reason: st?.stopReason, count: st?.count, message: st?.message, names: (st?.names || []).slice(0, 20) }

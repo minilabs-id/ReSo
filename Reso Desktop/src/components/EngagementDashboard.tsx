@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Button } from './ui/button';
 import { toast } from '../lib/notify';
-import { useAuth } from './LocalProvider';
+import { useLocal } from './LocalProvider';
 import { useAppLogo } from '../hooks/useAppLogo';
 import { cn } from '@/lib/utils';
 import { getLocalISODate, parseLocalISODate } from '../lib/date';
@@ -38,7 +38,7 @@ const EmployeeManager = React.lazy(() => import('./EmployeeManager'));
 const IMAGE_EXPORT_LIMIT = 60;
 
 export default function EngagementDashboard() {
-  const { user, db } = useAuth();
+  const { user, db } = useLocal();
   const appLogo = useAppLogo();
 
   // ── Satu pemilik per konsep: data rekap ──

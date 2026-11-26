@@ -9,7 +9,7 @@ import { Table, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Trash2, UserPlus, Save, X, Download, Upload, FileSpreadsheet, Users, Instagram, Facebook, User, CreditCard, UserCircle, Search, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { TiktokIcon } from './icons/TiktokIcon';
 import { toast } from '../lib/notify';
-import { useAuth, LOCAL_OPERATOR } from './LocalProvider';
+import { useLocal, LOCAL_OPERATOR } from './LocalProvider';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, getBidangColor } from '@/lib/utils';
 import { useDialogA11y } from '../hooks/useDialogA11y';
@@ -142,7 +142,7 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
-  const { user, db } = useAuth();
+  const { user, db } = useLocal();
 
   const [searchQuery, setSearchQuery] = useState('');
   type SortField = 'name' | 'bidang' | 'nip';

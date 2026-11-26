@@ -1,8 +1,8 @@
 /**
  * LocalProvider — pengganti FirebaseProvider untuk aplikasi offline (#10).
  *
- * KENAPA bentuk `useAuth()` dipertahankan: 4 komponen besar memakai
- * `const { user, db, loading } = useAuth()`. Dengan mempertahankan nama hook &
+ * KENAPA bentuk `useLocal()` dipertahankan: 4 komponen besar memakai
+ * `const { user, db, loading } = useLocal()`. Dengan mempertahankan nama hook &
  * bentuk nilai yang sama, perubahannya cukup baris import — tidak ada logika
  * UI yang perlu ditulis ulang atau berisiko regresi.
  *
@@ -90,4 +90,4 @@ export const LocalProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 }
 
 /** Nama sama seperti versi Firebase supaya komponen tidak perlu diubah. */
-export const useAuth = () => useContext(LocalContext)
+export const useLocal = () => useContext(LocalContext)

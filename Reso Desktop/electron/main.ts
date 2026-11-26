@@ -2,7 +2,8 @@ import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseBrowserBounds } from './ipc/contracts'
-import { getSettings, setSettings, resetSettings } from './store/settings-store'
+import { getSettings, setSettings, resetSettings, restoreSettings } from './store/settings-store'
+import { SCHEMA_VERSION } from './db/schema'
 import { runController, setScrapeMainWindow } from './ipc/run-controller'
 import { getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, notifyScrapClick, onScrapClick, platformForContents, setHostBounds, showHost } from './scrape/scraper-host'
 import { newRunId } from '../src/shared/state'
@@ -252,9 +253,17 @@ function registerIpc(): void {
   })
   safeHandle(IPC.dbListSettings, () => db.listSettingKeys())
   safeHandle(IPC.dbExportAll, () => {
-    const settings: Record<string, unknown> = {}
-    for (const key of db.listSettingKeys()) settings[key] = readSettingValue(key)
-    return { ...db.exportAll(), settings, schemaVersion: 1 }
+    // Preferensi yang benar-benar dipakai UI ada di electron-store (settings.json),
+    // bukan di tabel SQLite lama. Cadangan harus memuat keduanya agar restore
+    // benar-benar mengembalikan keadaan operator.
+    const legacy: Record<string, unknown> = {}
+    for (const key of db.listSettingKeys()) legacy[key] = readSettingValue(key)
+    return {
+      ...db.exportAll(),
+      settings: getSettings(),
+      legacySettings: legacy,
+      schemaVersion: SCHEMA_VERSION,
+    }
   })
   safeHandle(IPC.dbImportAll, (_event, payload: unknown) => {
     if (!isRecord(payload)) return { ok: false as const, reason: 'invalid-payload' }
@@ -276,15 +285,17 @@ function registerIpc(): void {
       if (!date) return { ok: false as const, reason: 'invalid-daily' }
       parsedDaily.push({ date, patch: parseDailyPatch(row) })
     }
-    const parsedSettings: Array<{ key: string; value: unknown }> = []
-    if (payload.settings !== undefined) {
-      if (!isRecord(payload.settings)) return { ok: false as const, reason: 'invalid-settings' }
-      for (const [key, value] of Object.entries(payload.settings)) {
-        const k = parseSettingKey(key)
-        const parsed = parseSettingValue(value)
-        if (!k || !parsed.ok) return { ok: false as const, reason: 'invalid-settings' }
-        parsedSettings.push({ key: k, value: parsed.value })
-      }
+    if (payload.settings !== undefined && !isRecord(payload.settings)) {
+      return { ok: false as const, reason: 'invalid-settings' }
+    }
+    if (payload.legacySettings !== undefined && !isRecord(payload.legacySettings)) {
+      return { ok: false as const, reason: 'invalid-settings' }
+    }
+    const legacySettings = (payload.legacySettings ?? {}) as Record<string, unknown>
+    for (const [key, value] of Object.entries(legacySettings)) {
+      const k = parseSettingKey(key)
+      const parsed = parseSettingValue(value)
+      if (!k || !parsed.ok) return { ok: false as const, reason: 'invalid-settings' }
     }
     const conn = db.openDb()
     const tx = conn.transaction(() => {
@@ -293,9 +304,13 @@ function registerIpc(): void {
       // yang tidak ada di cadangan (kalau tidak, hari basi ikut terbawa).
       db.clearAllDaily()
       for (const row of parsedDaily) db.upsertDaily(row.date, row.patch)
-      for (const s of parsedSettings) writeSettingValue(s.key, s.value)
+      for (const [key, value] of Object.entries(legacySettings)) {
+        writeSettingValue(key, value)
+      }
     })
     tx()
+    // Preferensi scraper dipulihkan ke settings.json (bukan tabel SQLite).
+    restoreSettings(payload.settings ?? {})
     broadcastDbChanged()
     return { ok: true as const, stats: db.stats() }
   })

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from '../../lib/notify';
-import { useAuth } from '../../components/LocalProvider';
+import { useLocal } from '../../components/LocalProvider';
 import {
   dinasCollection,
   onSnapshot,
@@ -23,7 +23,7 @@ const HISTORY_LOOKBACK_DAYS = 120;
  * Komponen lain mengonsumsi hasilnya; tidak ada langganan onSnapshot duplikat.
  */
 export function useRekapData() {
-  const { user, loading, db } = useAuth();
+  const { user, loading, db } = useLocal();
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [dailyEngagements, setDailyEngagements] = useState<DailyEngagement[]>([]);
   const [dataStatus, setDataStatus] = useState<DataStatus>('loading');

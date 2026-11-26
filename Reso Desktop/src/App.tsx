@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import EngagementDashboard from './components/EngagementDashboard';
-import { useAuth } from './components/LocalProvider';
+import { useLocal } from './components/LocalProvider';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useAppLogo } from './hooks/useAppLogo';
 import { NotifyHost } from './components/ui/NotifyHost';
@@ -64,7 +64,7 @@ function DatabaseUnavailableScreen({ message }: { message: string }) {
 }
 
 export default function App() {
-  const { user, loading, error, hasDatabase } = useAuth();
+  const { user, loading, error, hasDatabase } = useLocal();
   const [showLoading, setShowLoading] = useState(true);
 
   useEffect(() => {

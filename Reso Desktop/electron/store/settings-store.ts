@@ -54,3 +54,17 @@ export function resetSettings(): ResoSettings {
   getStore().clear()
   return { ...SETTINGS_DEFAULTS }
 }
+
+/**
+ * Pulihkan seluruh preferensi dari cadangan. Bersih dari nilai lama, tetapi
+ * tetap disanitasi — berkas cadangan bisa diedit tangan.
+ */
+export function restoreSettings(raw: unknown): ResoSettings {
+  const clean = { ...SETTINGS_DEFAULTS, ...sanitizeSettingsPatch(raw) }
+  const s = getStore()
+  s.clear()
+  for (const [key, value] of Object.entries(clean)) {
+    s.set(key as keyof ResoSettings, value as ResoSettings[keyof ResoSettings])
+  }
+  return getSettings()
+}

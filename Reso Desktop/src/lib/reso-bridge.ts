@@ -1,16 +1,9 @@
 /**
  * Jembatan typed renderer → main process (Electron).
  *
- * `electron/preload.ts` mengekspos `window.reso` lewat contextBridge. Di build
- * WEB (Vite murni, tanpa Electron), `window.reso` tidak ada — semua pemanggilan
- * di sini HARUS tahan-absence (no-op), supaya `npm run build` web tetap aman.
+ * `electron/preload.ts` mengekspos `window.reso` lewat contextBridge. Pemanggilan
+ * tetap dibuat tahan-absence (no-op) bila bridge belum siap saat startup.
  */
-
-export interface ResoAppMeta {
-  version: string
-  platform: 'win32' | 'darwin' | 'linux'
-  electron: boolean
-}
 
 /** State hasil scraping (pemilik: main process). */
 export interface NameState {
@@ -113,7 +106,6 @@ declare global {
   interface Window {
     reso?: {
       platform: 'electron'
-      app: { getMeta: () => Promise<ResoAppMeta> }
       browser: ResoScrapeBrowserBridge
       settings: ResoSettingsBridge
       data: ResoDataBridge

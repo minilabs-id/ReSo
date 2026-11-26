@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { toast } from '../../lib/notify';
-import { useAuth } from '../../components/LocalProvider';
+import { useLocal } from '../../components/LocalProvider';
 import {
   arrayUnion,
   dinasDoc,
@@ -30,7 +30,7 @@ export function useRekapReview({
   dailyEngagementsMap,
   setBusyAction,
 }: ReviewArgs) {
-  const { user, db } = useAuth();
+  const { user, db } = useLocal();
   const unverifiedAutoFilledDates = useMemo(
     () => collectUnverifiedAutoFilled(dailyEngagementsMap),
     [dailyEngagementsMap]

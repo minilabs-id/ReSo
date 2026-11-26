@@ -11,6 +11,6 @@ for (let i = 0; i < 10; i++) { await sleep(3000); const t = (await list()).find(
 const runId = 'igfinal_' + Date.now()
 await app.ev(`window.reso.scrape.applyEvent('instagram', {type:'START',runId:${JSON.stringify(runId)},includeReplies:false})`, true)
 let st
-for (let i = 0; i < 25; i++) { await sleep(2000); st = await app.ev(`window.reso.scrape.getState('instagram')`, true); if (st && st.status !== 'running') break }
+for (let i = 0; i < 25; i++) { await sleep(2000); st = await app.ev(`(async()=>{const a=await window.reso.scrape.getAll();return a.instagram})()`, true); if (st && st.status !== 'running') break }
 console.log(JSON.stringify({ status: st?.status, reason: st?.stopReason, count: st?.count, names: st?.names }, null, 2))
 v.ws.close(); app.ws.close()

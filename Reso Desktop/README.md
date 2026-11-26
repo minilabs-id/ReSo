@@ -1,112 +1,101 @@
-# ReSo — Rekap Engagement Sosmed (Desktop Offline)
+# ReSo Desktop — Rekap Engagement Sosmed
 
-Aplikasi **desktop Windows** untuk merekap engagement pegawai ke media sosial
-lembaga (Instagram, Facebook, TikTok). Berjalan **offline total**: tanpa login,
-tanpa Firebase, tanpa server. Seluruh data disimpan lokal di mesin operator.
+Aplikasi **desktop Windows offline** untuk merekap engagement pegawai di Instagram,
+Facebook, dan TikTok. Tanpa login aplikasi, tanpa Firebase, tanpa server — seluruh
+data disimpan di mesin operator.
 
-Sumber kebenaran produk: [`specify.md`](./specify.md) (keputusan #10–#12:
-offline, SQLite lokal, scraping di aplikasi sendiri).
+Proyek ini berada di `D:\Github\ReSo\Reso Desktop`. Arsip proyek web lama
+(`api/`, `extension/`, `firebase*.json`, `vercel.json`, `public/`) ada di folder
+induk `D:\Github\ReSo\` dan **bukan** bagian aplikasi desktop.
 
-## Apa yang berubah dari versi web
+## Fitur
 
-| Dulu (web) | Sekarang (desktop) |
-|------------|--------------------|
-| Login Google + Firestore multi-tenant | Tanpa login; satu instalasi = satu operator |
-| Data di `dinas/{uid}` (Firestore) | SQLite lokal di `app.getPath('userData')/reso.db` |
-| Ekstensi Chrome ReSoEx | Scraper bawaan (Chromium Electron + `WebContentsView`) |
-| Deploy Vercel + API Functions | Installer NSIS Windows (`ReSoSetup-<versi>.exe`) |
-| Token sesi Firebase | Tidak ada — aplikasi offline tanpa login |
-
-Direktori `api/`, `firestore.rules`, dan referensi Firebase lainnya adalah
-**arsip versi web** dan bukan bagian aplikasi desktop.
-
-## Fitur utama
-
-- Master pegawai (CRUD, cari/urut, impor Excel/CSV, ekspor, template).
-- Input rekap harian: teks mentah IG/FB/TikTok + link, hasil dari browser internal
-  (opsional), matching nama/handle (termasuk akun ke-2).
-- Ambil Nama: browser internal (Chromium Electron) untuk membuka postingan
-  FB/IG/TikTok. Tiap halaman diberi tombol mengambang **Scrap** — klik setelah
-  daftar komentar muncul untuk mengambil nama langsung, tanpa paste manual.
-  Tombol **Proses halaman ini** tetap tersedia sebagai alternatif. Input manual
-  TikTok juga tetap didukung penuh.
-- Dashboard, laporan harian/mingguan/bulanan + ekspor PDF / gambar / Excel.
-- Pengaturan lokal: preferensi scraper, cadangan/pulihkan data, info versi & lokasi DB.
+- **Master pegawai** — CRUD, cari/urut, impor Excel/CSV, ekspor, template.
+- **Rekap Harian** — kalender + input manual (teks mentah IG/FB/TikTok).
+- **Ambil Nama** (sub-tab Rekap Harian) — browser internal dengan tombol
+  **Scrap** di halaman; nama otomatis masuk rekap & dicocokkan ke master pegawai.
+  Input manual tetap tersedia di modal rekap.
+- **Laporan** — harian/mingguan/bulanan + ekspor PDF, gambar, Excel.
+- **Data** — khusus master pegawai.
+- **Pengaturan** — preferensi scraper + cadangan/pulihkan data.
+- Sesi login sosmed dipertahankan (cookie persisten), dengan halaman awal yang
+  bisa diatur ke profil/postingan sendiri lewat tombol **Bookmark** di browser.
 
 ## Menjalankan
 
-Prasyarat: **Node.js 22+** dan npm.
+Prasyarat: Node.js 22+ dan npm, dijalankan dari folder `Reso Desktop`.
 
 ```bash
 npm install
-npm run dev:desktop      # Electron + Vite (development)
+npm run dev:desktop     # Electron + Vite (development)
+
+npm run build           # typecheck + build ke out/
+npm run start:desktop   # preview hasil build
+
+npm run dist:win        # installer NSIS ke release/
 ```
 
-Build & jalankan hasil build:
-
-```bash
-npm run build:desktop
-npm run start:desktop
-```
-
-Buat installer Windows (output di folder `release/`):
-
-```bash
-npm run dist:win
-```
+> Tidak ada pipeline web. `npm run build` menghasilkan aplikasi desktop, bukan
+> bundle `dist/`.
 
 ## Data lokal
 
-- Database: `%APPDATA%\reso\reso.db` (mengikuti `app.getPath('userData')`).
-- Preferensi scraper: `settings.json` di folder `userData` yang sama.
-- Semua akses data lewat IPC typed `window.reso` (preload `contextBridge`,
-  `contextIsolation` + `sandbox` aktif). Payload divalidasi di main process.
-- `better-sqlite3` v11.10 memakai prebuild khusus **Electron ABI 130**. Jalankan
-  `npm run rebuild:native` (terautomatik di `npm run dist:win`) untuk mengunduh
-  prebuild tersebut — tidak perlu Visual Studio.
+| Jenis | Lokasi | Diakses lewat |
+|-------|--------|---------------|
+| Pegawai & rekap harian | `%APPDATA%\reso\reso.db` (SQLite) | `window.reso.data` |
+| Preferensi scraper | `%APPDATA%\reso\settings.json` | `window.reso.settings` |
+| State scraping | `%APPDATA%\reso\scrape-state.json` | main process (`runController`) |
+| Sesi login sosmed | partisi `persist:reso-<platform>` | browser internal |
 
-Export/import seluruh data tersedia lewat layar Pengaturan (backup/restore).
+Semua akses melewati IPC typed `window.reso` (preload `contextBridge`,
+`contextIsolation` + `sandbox` aktif). Payload divalidasi di main process.
+Cadangan JSON di menu Pengaturan memuat pegawai, rekap, preferensi scraper, dan
+(untuk kompatibilitas) kunci SQLite lama.
+
+`better-sqlite3` 11.10 memakai prebuild Electron ABI 130; `npm run dist:win`
+menjalankan `npm run rebuild:native` lebih dulu. Tidak butuh Visual Studio.
+
+## Arsitektur
+
+```
+Renderer (React, src/)
+  ├─ src/lib/reso-bridge.ts   deklarasi typed window.reso
+  ├─ src/lib/local-db.ts      shim Firestore-like di atas IPC (kompatibilitas)
+  ├─ src/features/*           hook pemilik rekap & laporan
+  └─ src/components/*         UI + src/app/navConfig.tsx (navigasi tunggal)
+        │  IPC invoke/on
+        ▼
+Preload (electron/preload.ts)
+        ▼
+Main (electron/main.ts)
+  ├─ ipc/contracts.ts     validasi channel & payload
+  ├─ ipc/run-controller   pemilik tunggal state scraping
+  ├─ scrape/*             ScraperHost, runner, engine IG/FB/TikTok, handoff
+  ├─ store/*              preferensi + state JSON
+  └─ db/*                 skema & repositori SQLite
+```
+
+Aturan bersama (allowlist domain, state machine, pesan, parser) ada di
+`src/shared/` dan dipakai **main dan renderer** — satu sumber kebenaran.
+Detail audit arsitektur: [`ARCHITECTURE_ALIGNMENT_AUDIT.md`](./ARCHITECTURE_ALIGNMENT_AUDIT.md).
 
 ## Script
 
 | Command | Fungsi |
 |---------|--------|
 | `npm run dev:desktop` | Jalankan Electron mode dev |
-| `npm run build:desktop` | Build main/preload/renderer ke `out/` |
-| `npm run start:desktop` | Preview hasil build Electron |
+| `npm run build` | Typecheck + build desktop ke `out/` |
+| `npm run build:desktop` | Build desktop langsung |
+| `npm run start:desktop` | Preview hasil build |
 | `npm run dist:win` | Build + paket installer NSIS (`release/`) |
-| `npm run typecheck:desktop` | Typecheck main/preload (`electron/tsconfig.json`) |
-| `npm test` | Semua unit test (matching, DB lokal, API, network) |
-| `npm run test:stress` | Stress test matching ekstrem (lolos; dijalankan terpisah, **tidak** termasuk `npm test`) |
-| `npm run dev` | Dev server Vite — **pratinjau web only**, bukan aplikasi desktop |
-| `npm run build` | Typecheck + build Vite ke `dist/` — **pratinjau web**, bukan produk |
-| `npm run preview` | Preview hasil build Vite di `dist/` — **pratinjau web only** |
-| `npm run lint` | Typecheck via `tsc --noEmit` |
-| `npm run clean` | Menghapus `dist/`, `out/`, dan `release/` |
-
-## Arsitektur singkat
-
-```
-Renderer (React, src/)  ── window.reso (typed IPC) ──►  Main (electron/)
-Dashboard • Rekap • Laporan • Pegawai • Ambil Nama • Pengaturan
-                                                   • SQLite (repo data)
-                                                   • RunController + ScraperHost
-                                                   • electron-store (preferensi)
-```
-
-Struktur penting:
-
-- `src/components/LocalProvider.tsx` — pengganti `FirebaseProvider`, identitas
-  operator tetap (tanpa auth).
-- `src/lib/local-db.ts` — shim API Firestore-like di atas IPC (`window.reso.data`).
-- `electron/db/` — skema & repositori SQLite.
-- `electron/ipc/` — kontrak payload + validasi.
-- `electron/scrape/` — mesin scraping & state machine.
+| `npm run rebuild:native` | Rebuild `better-sqlite3` untuk ABI Electron |
+| `npm run typecheck:desktop` | Typecheck main/preload |
+| `npm test` | Seluruh unit test |
+| `npm run test:stress` | Stress test matching (dijalankan terpisah) |
+| `npm run clean` | Hapus `out/` dan `release/` |
 
 ## Catatan
 
-- Mode pengembangan: **penyempurnaan**, bukan rombak alur kerja operator.
-- Skor engagement: biner per platform per hari (IG + FB + TikTok, maks 3/hari).
-- Window operasional resmi Asia/Jakarta: reminder 14:45, batas rekap 15:00.
-- Versi aplikasi tampil di sidebar & Pengaturan; dibaca dari `package.json`
-  saat build — naikkan manual tiap rilis.
+- Skor engagement biner per platform per hari (IG + FB + TikTok, maks 3/hari).
+- Versi aplikasi dibaca dari `package.json` saat build dan tampil di sidebar.
+- Naikkan versi di `package.json` tiap rilis.

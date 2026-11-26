@@ -47,7 +47,7 @@ try {
   let st
   for (let i = 0; i < 25; i++) {
     await sleep(2000)
-    st = await app.ev(`window.reso.scrape.getState('tiktok')`, true)
+    st = await app.ev(`(async()=>{const a=await window.reso.scrape.getAll();return a.tiktok})()`, true)
     log(`poll ${i}: ${st?.status} count=${st?.count}`)
     if (st && st.status !== 'running') break
   }

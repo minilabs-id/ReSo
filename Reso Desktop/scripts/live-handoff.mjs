@@ -74,7 +74,7 @@ await sleep(900)
 const verify = await ev(`(async () => {
   const d=${JSON.stringify(handoffDate)};
   const doc=await window.reso.data.getDaily(d);
-  const st=await window.reso.scrape.getState('facebook');
+  const st=(await window.reso.scrape.getAll()).facebook;
   return {date:d, fb:doc?.fbRawText||'', ig:doc?.igRawText||'', tt:doc?.tiktokRawText||'', scraperCount:st.count};
 })()`, true)
 check('tanggal handoff = YYYY-MM-DD', /^\d{4}-\d{2}-\d{2}$/.test(verify.date || ''), verify.date)

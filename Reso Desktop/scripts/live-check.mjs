@@ -75,14 +75,14 @@ await sleep(500)
 const scraperText = await evaluate(`document.body.innerText`)
 check('judul panel scraper', scraperText.includes('Ambil Nama Komentar'))
 check('tombol handoff tanpa kata "hari ini"', scraperText.includes('Masukkan ke rekap') && !scraperText.includes('Masukkan ke rekap hari ini'))
-check('tombol Proses halaman ini', scraperText.includes('Proses halaman ini'))
+check('tombol Ambil dari halaman ini', scraperText.includes('Ambil dari halaman ini'))
 check('checkbox Sertakan balasan', scraperText.includes('Sertakan balasan'))
 const platformPressed = await evaluate(`[...document.querySelectorAll('[role="group"][aria-label="Pilih platform"] button')].map(b=>b.getAttribute('aria-pressed'))`)
 check('aria-pressed tab platform', Array.isArray(platformPressed) && platformPressed.length === 3, JSON.stringify(platformPressed))
 
 // State scrape lewat IPC sungguhan: SET_OPTIONS harus mengubah state main.
 const ipc = await evaluate(`(async () => {
-  const before = await window.reso.scrape.getState('facebook');
+  const before = (await window.reso.scrape.getAll()).facebook;
   const next = !before.includeReplies;
   const after = await window.reso.scrape.applyEvent('facebook', {type:'SET_OPTIONS', includeReplies: next});
   const all = await window.reso.scrape.getAll();
