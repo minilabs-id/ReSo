@@ -265,64 +265,106 @@ export function buildHarvestScript(platform: SocialPlatform, includeReplies: boo
         })) push(user);
       }
     } else {
-      // Facebook: nama penulis dari kontainer komentar.
-      const SEL = '[data-commentid], [role="article"]';
-      const plausible = (v) => {
-        if (!v || v.length < 2 || v.length > 100) return false;
-        if (/^\\d+$/.test(v)) return false;
-        if (/https?:\\/\\//i.test(v)) return false;
-        if (v.split(/\\s+/).length > 6) return false;
-        if (/^(reply|replies|like|love|share|comment|comments|see more|balas|suka|bagikan|komentar|lihat selengkapnya|edited|following|follow)$/i.test(v)) return false;
-        if (!/[\\p{L}\\p{N}]/u.test(v)) return false;
-        return true;
+      // Facebook: pakai sinyal struktural "Komentar oleh <nama> <waktu>" lebih
+      // dulu. Heuristik lama tetap sebagai fallback bila aria-label berubah.
+      const timeRe = /\\s+\\d+\\s+(jam|menit|detik|hari|minggu|tahun|bulan|hr|min|second|minute|hour|day|week|month|year)s?\\b.*$/i;
+      const labelName = (label) => {
+        if (typeof label !== 'string') return '';
+        // FB menyisipkan zero-width chars di teks — bersihkan sebelum regex.
+        const s = clean(label)
+          .replace(/^(Komentar|Comment)\\s+oleh\\s+/i, '')
+          .replace(/^Comment\\s+by\\s+/i, '');
+        const v = s.replace(timeRe, '').trim();
+        if (!v || v.length > 100 || /\\s{6,}/.test(v) || /^\\d+$/.test(v)) return '';
+        return v;
       };
-      const norm = (s) => clean(s)
-        .replace(/\\s+[·•|].*$/, '')
-        .replace(/\\s+\\d+\\s+(jam|menit|detik|hari|minggu|tahun|bulan|hr|min|second|minute|hour|day|week|month|year)s?\\b.*$/i, '')
-        .replace(/\\s+(about\\s+)?(a|an|\\d+)\\s+(second|minute|hour|day|week|month|year)s?\\s+ago.*$/i, '')
-        .trim();
-      const authorOf = (root) => {
-        const nested = Array.from(root.querySelectorAll(SEL));
-        const inNested = (el) => nested.some((n) => n !== el && n.contains(el));
-        const sels = ['a[role="link"]', 'strong', 'a[href^="/"]', '[dir="auto"]'];
-        for (const sel of sels) {
-          const els = Array.from(root.querySelectorAll(sel));
-          for (const el of els) {
-            if (inNested(el)) continue; // jangan ambil nama dari balasan bersarang
-            const v = norm(el.getAttribute('aria-label') || el.textContent || '');
-            if (plausible(v)) return v;
-          }
-        }
-        const al = root.getAttribute('aria-label');
-        if (al) { const v = norm(al); if (plausible(v)) return v; }
-        return '';
-      };
-      const roots = Array.from(document.querySelectorAll(SEL));
-      for (const root of roots) {
-        if (!INCLUDE_REPLIES && roots.some((o) => o !== root && o.contains(root))) continue;
-        // Lewati artikel induk (post itu sendiri) bila tampak sebagai post.
-        if (!root.hasAttribute('data-commentid')) {
-          if (roots.some((o) => o !== root && root.contains(o))) continue;
-          if ((root.textContent || '').length > 600) continue;
-        }
-        const v = authorOf(root);
+      const articles = Array.from(document.querySelectorAll('[role="article"][aria-label]'));
+      for (const a of articles) {
+        const label = a.getAttribute('aria-label') || '';
+        const isComment = /^(Komentar|Comment)\\s+oleh\\s+/i.test(label) || /^Comment\\s+by\\s+/i.test(label);
+        const isReply = /^(Balasan|Reply)\\s+oleh\\s+/i.test(label) || /^Reply\\s+by\\s+/i.test(label);
+        if (!isComment && !(INCLUDE_REPLIES && isReply)) continue;
+        const v = labelName(label);
         if (v) push(v);
       }
-      // Fallback: baris dengan tombol Reply/Balas, lalu ambil nama di dekatnya.
+
       if (!out.length) {
-        const rep = /^(reply|balas)$/i;
-        const nodes = Array.from(document.querySelectorAll('button, [role="button"], a, [aria-label]'));
-        for (const b of nodes) {
-          const bt = ((b.textContent || '') + ' ' + (b.getAttribute('aria-label') || '')).trim();
-          if (!rep.test(bt)) continue;
-          const row = b.parentElement && b.parentElement.parentElement;
-          if (!row) continue;
-          const a = row.querySelector('a[role="link"], strong, a[href^="/"]');
-          if (a) { const v = norm(a.getAttribute('aria-label') || a.textContent || ''); if (plausible(v)) push(v); }
+        // Fallback lama — selector generik bila aria-label tidak tersedia.
+        const SEL = '[data-commentid], [role="article"]';
+        const plausible = (v) => {
+          if (!v || v.length < 2 || v.length > 100) return false;
+          if (/^\\d+$/.test(v)) return false;
+          if (/https?:\\/\\//i.test(v)) return false;
+          if (v.split(/\\s+/).length > 6) return false;
+          if (/^(reply|replies|like|love|share|comment|comments|see more|balas|suka|bagikan|komentar|lihat selengkapnya|edited|following|follow)$/i.test(v)) return false;
+          if (!/[\\p{L}\\p{N}]/u.test(v)) return false;
+          return true;
+        };
+        const norm = (s) => clean(s)
+          .replace(/\\s+[·•|].*$/, '')
+          .replace(/\\s+\\d+\\s+(jam|menit|detik|hari|minggu|tahun|bulan|hr|min|second|minute|hour|day|week|month|year)s?\\b.*$/i, '')
+          .replace(/\\s+(about\\s+)?(a|an|\\d+)\\s+(second|minute|hour|day|week|month|year)s?\\s+ago.*$/i, '')
+          .trim();
+        const authorOf = (root) => {
+          const nested = Array.from(root.querySelectorAll(SEL));
+          const inNested = (el) => nested.some((n) => n !== el && n.contains(el));
+          const sels = ['a[role="link"]', 'strong', 'a[href^="/"]', '[dir="auto"]'];
+          for (const sel of sels) {
+            const els = Array.from(root.querySelectorAll(sel));
+            for (const el of els) {
+              if (inNested(el)) continue; // jangan ambil nama dari balasan bersarang
+              const v = norm(el.getAttribute('aria-label') || el.textContent || '');
+              if (plausible(v)) return v;
+            }
+          }
+          const al = root.getAttribute('aria-label');
+          if (al) { const v = norm(al); if (plausible(v)) return v; }
+          return '';
+        };
+        const roots = Array.from(document.querySelectorAll(SEL));
+        for (const root of roots) {
+          if (!INCLUDE_REPLIES && roots.some((o) => o !== root && o.contains(root))) continue;
+          // Lewati artikel induk (post itu sendiri) bila tampak sebagai post.
+          if (!root.hasAttribute('data-commentid')) {
+            if (roots.some((o) => o !== root && root.contains(o))) continue;
+            if ((root.textContent || '').length > 600) continue;
+          }
+          const v = authorOf(root);
+          if (v) push(v);
+        }
+        // Fallback: baris dengan tombol Reply/Balas, lalu ambil nama di dekatnya.
+        if (!out.length) {
+          const rep = /^(reply|balas)$/i;
+          const nodes = Array.from(document.querySelectorAll('button, [role="button"], a, [aria-label]'));
+          for (const b of nodes) {
+            const bt = ((b.textContent || '') + ' ' + (b.getAttribute('aria-label') || '')).trim();
+            if (!rep.test(bt)) continue;
+            const row = b.parentElement && b.parentElement.parentElement;
+            if (!row) continue;
+            const a = row.querySelector('a[role="link"], strong, a[href^="/"]');
+            if (a) { const v = norm(a.getAttribute('aria-label') || a.textContent || ''); if (plausible(v)) push(v); }
+          }
         }
       }
     }
     return out;
+  })()`
+}
+
+/** Jumlah komentar yang diumumkan FB di halaman (bila ada). */
+export function buildFacebookMetaScript(): string {
+  return `(() => {
+    const text = document.body.innerText || '';
+    const re = /(Lihat|View)\\s+([\\d.,]+)\\s*(komentar|comments?|balasan|replies)|\\b([0-9]{2,})\\s*(komentar|comments?)\\b/gi;
+    let declared = 0;
+    let m;
+    while ((m = re.exec(text))) {
+      const raw = m[2] || m[4] || '';
+      const n = parseInt(raw.replace(/[.,]/g, ''), 10);
+      // Angka 1 sering berasal dari jumlah reaksi — bukan jumlah komentar.
+      if (Number.isFinite(n) && n >= 2 && n < 100000 && n > declared) declared = n;
+    }
+    return { declared: declared || null };
   })()`
 }
 
@@ -364,6 +406,7 @@ export async function runSocialCapture(
     usePlatform === 'instagram' ? Math.max(180_000, options.timeoutMs) : Math.max(0, options.timeoutMs)
   const deadline = Date.now() + budgetMs
   let zeroComments = false
+  let fbDeclared: number | null = null
 
   /**
    * Setiap executeJavaScript dibatasi sisa deadline & abort. Tanpa ini, halaman
@@ -408,9 +451,18 @@ export async function runSocialCapture(
     if (!merged.length && reason !== 'error' && reason !== 'stopped' && !finalDetail) {
       finalDetail = ZERO_NAMES_DETAIL
     }
+    // FB: sampaikan apakah hasilnya tuntas bila FB mengumumkan jumlah komentar.
+    let finalNote = note
+    if (!finalNote && usePlatform === 'facebook' && merged.length) {
+      finalNote = fbDeclared && fbDeclared > 0
+        ? merged.length >= fbDeclared
+          ? `Tuntas — ${merged.length} nama dari ${fbDeclared} komentar.`
+          : `Sebagian — ${merged.length} nama dari ${fbDeclared} komentar; klik Ambil nama lagi.`
+        : `Diambil ${merged.length} nama.`
+    }
     const extra = {
       ...(zeroComments ? { zeroComments: true } : {}),
-      ...(note ? { note } : {}),
+      ...(finalNote ? { note: finalNote } : {}),
     }
     return finalDetail ? { names: merged, reason, detail: finalDetail, ...extra } : { names: merged, reason, ...extra }
   }
@@ -516,6 +568,15 @@ export async function runSocialCapture(
         'error',
         `Gagal mengambil komentar Instagram (REST: ${restStatus}, GraphQL: ${gqlStatus}). Pastikan sudah login & tidak kena rate limit.`
       )
+    }
+
+    if (usePlatform === 'facebook') {
+      try {
+        const meta = await runJs<{ declared?: number | null }>(buildFacebookMetaScript())
+        fbDeclared = typeof meta?.declared === 'number' ? meta.declared : null
+      } catch {
+        /* jumlah komentar tidak tersedia — tetap panen */
+      }
     }
 
     // Best-effort: buka panel komentar bila belum terbuka.

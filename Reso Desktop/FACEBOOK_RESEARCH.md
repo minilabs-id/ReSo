@@ -1,7 +1,16 @@
 # Riset & evaluasi scraping Facebook
 
 **Tanggal:** 2026-11-26
-**Status:** riset selesai — **belum ada perubahan kode** (menunggu keputusan).
+**Status:** riset selesai, rekomendasi utama **sudah diimplementasi & diuji**.
+
+## Implementasi hasil eksekusi
+- Pemanen FB sekarang memprioritaskan `[role="article"][aria-label]` dengan pola
+  `Komentar/Comment oleh` dan `Balasan/Reply by` (saat `includeReplies`).
+- Heuristik lama tetap sebagai fallback.
+- Jumlah komentar dari teks hanya dipercaya bila eksplisit (`Lihat/View N komentar`)
+  atau angka ≥2 — angka `1` dari reaksi tidak lagi dijadikan acuan.
+- Uji ulang postingan detikcom: `done`, **10 nama**, pesan "Diambil 10 nama.",
+  handoff tetap otomatis.
 
 ## 1. Arsitektur yang relevan
 
@@ -66,7 +75,7 @@ Ini sinyal **struktural** yang jauh lebih kuat daripada heuristik anchors.
 - **`plugins/comments.php`:** butuh konfigurasi plugin公开 & tidak diuji; tidak direkomendasikan tanpa bukti.
 - **Passive CDP capture:** menangkap request GraphQL, tetapi tidak ada body komentar — sama seperti IG.
 
-## 5. Rekomendasi (belum diterapkan)
+## 5. Rekomendasi (butir 1–2 diterapkan; 3–5 sebagian)
 
 1. Tambahkan **pemanen FB prioritas**:
    `[role="article"][aria-label]` dengan regex `^(Komentar|Comment) oleh |^(Comment by )`,

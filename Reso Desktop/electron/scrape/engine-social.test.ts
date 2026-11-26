@@ -5,7 +5,7 @@
  * dibuang. Sekarang penentuan komentar memakai permalink /p/.../c/... dan
  * indentasi RELATIF terhadap komentar utama.
  */
-import { buildHarvestScript } from './engine-social'
+import { buildFacebookMetaScript, buildHarvestScript } from './engine-social'
 import { buildInstagramApiHarvestScript, shortcodeToPk } from './instagram-api'
 import {
   buildInstagramGraphqlHarvestScript,
@@ -144,5 +144,14 @@ ok(cdpCalls.includes('attach:1.3'), 'CDP attach memakai versi 1.3')
 ok(cdpCalls.includes('Page.enable'), 'domain Page dinyalakan')
 ok(cdpCalls.includes('Runtime.enable'), 'domain Runtime dinyalakan')
 ok(cdpCalls.includes('Page.addScriptToEvaluateOnNewDocument'), 'capture dipasang sebelum dokumen')
+
+// --- Facebook aria-label struktural ---
+ok(fb.includes('[role="article"][aria-label]'), 'FB memakai selector artikel ber-label')
+ok(fb.includes('Komentar'), 'FB mengenali label Komentar oleh')
+ok(fb.includes('Balasan'), 'FB mengenali label Balasan saat includeReplies')
+ok(fb.includes('labelName'), 'nama diambil dari aria-label sebelum heuristik lama')
+const fbMeta = buildFacebookMetaScript()
+ok(fbMeta.includes('komentar|comments?'), 'meta FB mencari jumlah komentar')
+ok(fbMeta.includes('declared'), 'meta FB mengembalikan jumlah yang diumumkan')
 
 console.log(`engine-social: ${n} checks OK`)
