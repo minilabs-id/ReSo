@@ -1,5 +1,9 @@
 import { app, BrowserWindow, ipcMain, session, shell } from 'electron'
-import { autoUpdater } from 'electron-updater'
+import { createRequire } from 'module'
+
+// electron-updater adalah paket CommonJS — named import ESM gagal di runtime.
+const nodeRequire = createRequire(import.meta.url)
+const { autoUpdater } = nodeRequire('electron-updater') as typeof import('electron-updater')
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseBrowserBounds } from './ipc/contracts'
