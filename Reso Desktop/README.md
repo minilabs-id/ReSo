@@ -12,9 +12,9 @@ induk `D:\Github\ReSo\` dan **bukan** bagian aplikasi desktop.
 
 - **Master pegawai** — CRUD, cari/urut, impor Excel/CSV, ekspor, template.
 - **Rekap Harian** — kalender + input manual (teks mentah IG/FB/TikTok).
-- **Ambil Nama** (sub-tab Rekap Harian) — browser internal dengan tombol
-  **Scrap** di halaman; nama otomatis masuk rekap & dicocokkan ke master pegawai.
-  Input manual tetap tersedia di modal rekap.
+- **Ambil Nama** (sub-tab Rekap Harian) — browser internal + **satu tombol**
+  "Ambil nama dari halaman ini" di panel; nama otomatis masuk rekap & dicocokkan
+  ke master pegawai. Input manual tetap tersedia di modal rekap.
 - **Laporan** — harian/mingguan/bulanan + ekspor PDF, gambar, Excel.
 - **Data** — khusus master pegawai.
 - **Pengaturan** — preferensi scraper + cadangan/pulihkan data.

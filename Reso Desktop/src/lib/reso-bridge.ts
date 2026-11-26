@@ -79,7 +79,7 @@ interface ResoDataBridge {
   batchSave?: (ops: unknown) => Promise<{ ok: boolean; reason?: string }>
 }
 
-/** Browser internal tempat operator membuka postingan lalu menekan tombol Scrap. */
+/** Browser internal tempat operator membuka postingan lalu mengambil nama dari panel. */
 export interface ResoScrapeBrowserBridge {
   openBrowser: (platform: string, bounds: unknown) => Promise<boolean>
   closeBrowser: () => Promise<boolean>
@@ -150,7 +150,7 @@ declare global {
 export const isElectron =
   typeof window !== 'undefined' && window.reso?.platform === 'electron'
 
-// ===================== Browser internal (buka postingan → tombol Scrap) =====================
+// ===================== Browser internal (buka postingan → panel Ambil Nama) =====================
 
 export interface ScrapeBrowserBounds {
   x: number

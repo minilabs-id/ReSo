@@ -114,7 +114,7 @@ eq(parseRunEvent({ type: 'DONE', runId: 'r' }), { type: 'DONE', runId: 'r', reas
 eq(parseRunEvent({ type: 'FAIL', message: 'x'.repeat(900) })?.type, 'FAIL', 'parse FAIL diterima')
 ok((parseRunEvent({ type: 'FAIL', message: 'x'.repeat(900) }) as { message: string }).message.length === 500, 'parse FAIL memotong pesan')
 
-// --- opsi & target (sumber kebenaran tombol Scrap in-page) ---
+// --- opsi & target (sumber kebenaran panel Ambil Nama) ---
 s = run([{ type: 'SET_OPTIONS', includeReplies: true }])
 eq(s.includeReplies, true, 'SET_OPTIONS mengubah includeReplies')
 eq(reduce('facebook', s, { type: 'SET_OPTIONS', includeReplies: true }).changed, false, 'SET_OPTIONS identik → changed=false')

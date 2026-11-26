@@ -266,7 +266,7 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
 
   const state = states[platform];
   // Satu sumber kebenaran: state main. Checkbox mengirim SET_OPTIONS ke main,
-  // sehingga tombol Scrap di halaman memakai opsi yang sama dengan UI.
+  // sehingga aksi ambil nama memakai opsi yang sama dengan UI.
   const includeReplies = state.includeReplies;
   const running = state.status === 'running';
   /** State dari sesi sebelumnya tidak boleh tampil seolah hasil baru. */
@@ -407,7 +407,7 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
             disabled={running || !canScrape}
             title={canScrape ? undefined : `Buka postingan ${PLATFORM_LABEL_FULL[platform]} dulu di browser bawah.`}
           >
-            {running ? 'Berjalan…' : 'Ambil dari halaman ini'}
+            {running ? 'Berjalan…' : 'Ambil nama dari halaman ini'}
           </Button>
           <Button
             variant="outline"
@@ -489,8 +489,8 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
               )}
             </div>
             <p className="text-[11px] text-slate-500">
-              Buka postingan/video → buka daftar komentar → klik <b>Scrap</b> di kanan atas halaman.
-              Tombol <b>Ambil dari halaman ini</b> hanya cadangan.
+              Buka satu postingan → buka daftar komentar → klik <b>Ambil nama dari halaman ini</b>.
+              Nama langsung masuk rekap harian.
             </p>
           </div>
 

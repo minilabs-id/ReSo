@@ -51,6 +51,6 @@ ketika komentar dibuka oleh operator sebelum klik Scrap.
 ## 5. Rekomendasi lanjutan
 1. Pakai **GraphQL Instagram dengan `doc_id` + `X-CSRFToken`** seperti pola TikTok
    (intersep respons komentar), bukan klik DOM — tahan terhadap perubahan UI.
-2. Atau sediakan mode "bantu buka komentar": tombol Scrap menunggu hingga anchor
+2. Atau sediakan mode "bantu buka komentar": tombol Ambil nama menunggu hingga anchor
    komentar muncul (maks 30 dtk) sebelum memutuskan gagal.
 3. Uji ulang dengan akun Instagram yang tidak kena checkpoint/rate-limit.

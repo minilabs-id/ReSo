@@ -137,8 +137,8 @@ async function execute(
     if (!postUrl) {
       fail(
         platform === 'facebook'
-          ? 'Buka dulu postingan Facebook di browser aplikasi, lalu klik tombol Scrap.'
-          : 'Buka dulu postingan Instagram di browser aplikasi, lalu klik tombol Scrap.'
+          ? 'Buka dulu postingan Facebook di browser aplikasi, lalu klik "Ambil nama dari halaman ini".'
+          : 'Buka dulu postingan Instagram di browser aplikasi, lalu klik "Ambil nama dari halaman ini".'
       )
       return
     }

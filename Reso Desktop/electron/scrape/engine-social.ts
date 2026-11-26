@@ -21,7 +21,7 @@ export interface SocialCaptureOptions {
   maxScrollRounds: number
   scrollDelayMs: number
   timeoutMs: number
-  /** URL postingan saat tombol Scrap ditekan — hasil tidak boleh berpindah. */
+  /** URL postingan saat aksi ambil nama ditekan — hasil tidak boleh berpindah. */
   lockUrl?: string
   signal: { readonly aborted: boolean }
 }

@@ -6,23 +6,16 @@
  * run. Partition `persist:reso-<platform>` menyimpan cookie di userData, jadi
  * operator login SEKALI, bukan tiap kali rekap.
  *
- * KEAMANAN: view ini memuat halaman pihak ketiga. contextIsolation aktif,
- * nodeIntegration mati, sandbox aktif. Klik tombol Scrap diverifikasi di main
- * process (asal WebContents host + domain + debounce). Navigasi dibatasi domain.
- *
  * Tampilan: view default-nya disembunyikan (dipakai runner), tapi bisa diangkat
  * jadi browser embedded yang terlihat lewat showHost()/hideHost()/setHostBounds().
  */
 import {
-  app,
   BrowserWindow,
   WebContentsView,
   session,
   type Session,
   type WebContents,
 } from 'electron'
-import { existsSync } from 'fs'
-import { join } from 'path'
 import { IPC } from '../ipc/contracts'
 import type { Platform } from '../../src/shared/types'
 import { isAllowedScrapeUrl } from '../../src/shared/platform'
@@ -42,92 +35,15 @@ const DESKTOP_UA =
 const COOKIE_TTL_SECONDS = 365 * 24 * 60 * 60
 const lastCookieSync = new Map<Platform, number>()
 
-/** id elemen tombol — dipakai untuk idempotensi injeksi. */
-const SCRAP_BUTTON_ID = '__reso_scrap_btn'
-
-/**
- * Script injeksi. Tombol fixed di kanan-atas, kontras tinggi, z-index maksimal.
- * Klik diteruskan lewat preload `window.resoScrap.click`. MutationObserver
- * memasang ulang tombol bila halaman SPA mengganti DOM tanpa navigasi.
- */
-function buildScrapButtonScript(): string {
-  return `
-(function () {
-  var ID = '${SCRAP_BUTTON_ID}';
-  function mount() {
-    // Injeksi baru mengganti tombol & observer lama supaya tidak ada dua
-    // tombol Scrap bertumpuk setelah SPA mengganti DOM.
-    try { if (window.__resoScrapMO) window.__resoScrapMO.disconnect(); } catch (_) {}
-    var old = document.getElementById(ID);
-    if (old && old.remove) old.remove();
-    if (!document.body) return;
-    var btn = document.createElement('button');
-    btn.id = ID;
-    btn.type = 'button';
-    btn.textContent = 'Scrap';
-    btn.setAttribute('style', [
-      'position:fixed',
-      'top:12px',
-      'right:12px',
-      'z-index:2147483647',
-      'padding:8px 14px',
-      'border:2px solid #111111',
-      'border-radius:999px',
-      'background:#ffffff',
-      'color:#111111',
-      'font:600 13px/1 system-ui,-apple-system,Segoe UI,sans-serif',
-      'box-shadow:0 2px 8px rgba(0,0,0,0.35)',
-      'cursor:pointer',
-      'opacity:0.94'
-    ].join(';'));
-    btn.addEventListener('click', function (e) {
-      // Tolak klik programatik dari script halaman (el.click()). Hanya klik
-      // pengguna sungguhan yang diteruskan ke main process.
-      if (!e.isTrusted) return;
-      // Main memakai debounce 2 dtk. Beri umpan balik di tombol supaya klik
-      // kedua tidak terasa "mati" tanpa sebab.
-      if (btn.getAttribute('data-busy') === '1') return;
-      e.preventDefault();
-      e.stopPropagation();
-      btn.setAttribute('data-busy', '1');
-      var label = btn.textContent;
-      btn.textContent = 'Diproses…';
-      window.setTimeout(function () {
-        btn.setAttribute('data-busy', '0');
-        btn.textContent = label;
-      }, 2200);
-      try { if (window.resoScrap) window.resoScrap.click(); } catch (_) {}
-    }, true);
-    document.body.appendChild(btn);
-  }
-  mount();
-  if (!document.getElementById(ID)) {
-    document.addEventListener('DOMContentLoaded', mount, { once: true });
-  }
-  try {
-    var mo = new MutationObserver(function () { if (!document.getElementById(ID)) mount(); });
-    mo.observe(document.documentElement || document, { childList: true, subtree: true });
-    window.__resoScrapMO = mo;
-  } catch (_) {}
-})();
-`
-}
-
 export interface HostHandle {
   view: WebContentsView
   ses: Session
 }
 
-/** Callback tombol Scrap: platform asal klik. */
-type ScrapCallback = (platform: Platform) => void
-
 const hosts = new Map<Platform, HostHandle>()
 
 /** Platform yang view-nya sedang terlihat (WebContentsView tak punya isVisible()). */
 const visiblePlatforms = new Set<Platform>()
-
-/** Subscriber onScrapClick — multi subscriber lewat Set. */
-const scrapSubscribers = new Set<ScrapCallback>()
 
 /**
  * Jendela induk. API publik showHost/loadHost tidak menerima BrowserWindow,
@@ -145,22 +61,6 @@ function resolveWindow(): BrowserWindow | null {
   const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
   if (win) ownerWindow = win
   return win ?? null
-}
-
-/**
- * Preload browser internal punya beberapa lokasi sah tergantung cara app dijalankan:
- * - packaged: <app.asar>/assets/webview-preload.cjs
- * - dev/preview dari out/main/index.js: <repo>/assets/webview-preload.cjs
- * - root proyek saat dijalankan langsung
- */
-function resolveScrapPreload(): string {
-  const candidates = [
-    join(app.getAppPath(), 'assets', 'webview-preload.cjs'),
-    join(__dirname, '..', '..', 'assets', 'webview-preload.cjs'),
-    join(__dirname, '..', 'assets', 'webview-preload.cjs'),
-    join(process.cwd(), 'assets', 'webview-preload.cjs'),
-  ]
-  return candidates.find((p) => existsSync(p)) ?? candidates[0]!
 }
 
 /** Hanya navigasi http(s) yang diizinkan. */
@@ -234,19 +134,7 @@ function broadcastNav(platform: Platform, wc: WebContents): void {
   notifyRenderer(IPC.scrapeBrowserNavigated, { platform, url: wc.getURL() || '' })
 }
 
-/** Injeksi script tombol Scrap ke satu webContents. */
-function injectInto(wc: WebContents, platform: Platform): void {
-  if (!wc || wc.isDestroyed()) return
-  try {
-    void wc.executeJavaScript(buildScrapButtonScript()).catch(() => {
-      /* halaman navigasi sebelum injeksi selesai */
-    })
-  } catch {
-    /* view sudah mati */
-  }
-}
-
-/** Event host: injeksi tombol tiap load, siaran navigasi, & jaga sesi login. */
+/** Event host: siaran navigasi & jaga sesi login. */
 function wireHostEvents(platform: Platform, view: WebContentsView): void {
   const wc = view.webContents
 
@@ -254,7 +142,6 @@ function wireHostEvents(platform: Platform, view: WebContentsView): void {
   const onSettled = (): void => {
     if (!isHttpUrl(wc.getURL())) return
     persistSessionCookies(platform)
-    injectInto(wc, platform)
     broadcastNav(platform, wc)
     notifyRenderer(IPC.scrapeBrowserLoading, { platform, loading: false })
   }
@@ -281,7 +168,6 @@ export function getHost(win: BrowserWindow, platform: Platform): HostHandle {
   const view = new WebContentsView({
     webPreferences: {
       partition: partitionFor(platform),
-      preload: resolveScrapPreload(),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
@@ -359,17 +245,6 @@ export function getHostUrl(platform: Platform): string {
   return host.view.webContents.getURL() || ''
 }
 
-/** Main memanggil ini setelah ipc `reso:scrap:click` terveraksi dari host. */
-export function notifyScrapClick(platform: Platform): void {
-  for (const cb of scrapSubscribers) {
-    try {
-      cb(platform)
-    } catch {
-      /* subscriber error tidak boleh memutus yang lain */
-    }
-  }
-}
-
 /** Platform asal sebuah webContents (dipakai main saat menerima IPC klik). */
 export function platformForContents(contents: WebContents): Platform | null {
   for (const [platform, host] of hosts) {
@@ -401,14 +276,6 @@ export function hostNavState(platform: Platform): { canBack: boolean; canForward
     }
   } catch {
     return { canBack: false, canForward: false }
-  }
-}
-
-/** Daftar callback klik Scrap. Return fungsi unsubscribe. */
-export function onScrapClick(cb: ScrapCallback): () => void {
-  scrapSubscribers.add(cb)
-  return () => {
-    scrapSubscribers.delete(cb)
   }
 }
 

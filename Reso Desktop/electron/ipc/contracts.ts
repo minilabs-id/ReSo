@@ -39,7 +39,6 @@ export const IPC = {
   scrapeBrowserGetUrl: 'reso:scrape:browser-get-url',
   scrapeBrowserNavigated: 'reso:scrape:browser-navigated',
   scrapeBrowserLoading: 'reso:scrape:browser-loading',
-  scrapClick: 'reso:scrap:click',
   dbExportAll: 'reso:db:export-all',
   dbImportAll: 'reso:db:import-all',
   dbGetAllSettings: 'reso:db:get-all-settings',

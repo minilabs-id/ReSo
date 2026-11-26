@@ -11,16 +11,13 @@ import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDail
 import { getSettings, setSettings, resetSettings, restoreSettings } from './store/settings-store'
 import { SCHEMA_VERSION } from './db/schema'
 import { runController, setScrapeMainWindow } from './ipc/run-controller'
-import { getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, notifyScrapClick, onScrapClick, platformForContents, setHostBounds, showHost } from './scrape/scraper-host'
-import { newRunId } from '../src/shared/state'
+import { getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, platformForContents, setHostBounds, showHost } from './scrape/scraper-host'
 import { isAllowedScrapeUrl } from '../src/shared/platform'
 import type { Platform } from '../src/shared/types'
 import * as db from './db/database'
 
 const isDev = !app.isPackaged
 let mainWindow: BrowserWindow | null = null
-/** Debounce klik tombol Scrap in-page (ms) — cegah START bertumpuk. */
-const lastScrapClickAt = new Map<Platform, number>()
 
 function isHttp(url: string): boolean {
   return url.startsWith('http://') || url.startsWith('https://')
@@ -257,7 +254,7 @@ function registerIpc(): void {
     if (!isPlatform(platform)) return null
     return runController.apply(platform, event)
   })
-  // Browser internal yang terlihat + tombol Scrap di halaman postingan.
+  // Browser internal yang terlihat — aksi ambil nama dipicu dari panel.
   safeHandle(IPC.scrapeOpenBrowser, (_event, platform: unknown, bounds: unknown) => {
     if (!isPlatform(platform)) return false
     const b = parseBrowserBounds(bounds)
@@ -302,20 +299,6 @@ function registerIpc(): void {
   safeHandle(IPC.scrapeBrowserGetUrl, (_event, platform: unknown) =>
     isPlatform(platform) ? getHostUrl(platform) : ''
   )
-
-  // Klik tombol Scrap dari halaman: verifikasi asal, nonce, domain, & debounce.
-  ipcMain.on(IPC.scrapClick, (event) => {
-    // Hanya WebContents host scraper yang boleh memicu; nonce tidak dipakai
-    // karena halaman SPA menggantinya setelah tombol di-mount.
-    const platform = platformForContents(event.sender)
-    if (!platform) return
-    // Halaman bisa berpindah ke domain asing setelah tombol di-mount — tolak.
-    if (!isAllowedScrapeUrl(getHostUrl(platform), platform)) return
-    const now = Date.now()
-    if (now - (lastScrapClickAt.get(platform) ?? 0) < 2000) return
-    lastScrapClickAt.set(platform, now)
-    notifyScrapClick(platform)
-  })
 
   // Data lokal (SQLite). SQL hanya lewat prepared statement; payload divalidasi.
   safeHandle(IPC.dbListEmployees, () => db.listEmployees())
@@ -515,16 +498,6 @@ function hardenSession(): void {
 app.whenReady().then(() => {
   hardenSession()
   registerIpc()
-  // Tombol "Scrap" yang di-inject ke halaman memicu run platform itu.
-  onScrapClick((platform) => {
-    // Satu sumber kebenaran: opsi dari state yang sudah disetel renderer lewat
-    // event SET_OPTIONS — bukan variabel bayangan di main process.
-    runController.apply(platform, {
-      type: 'START',
-      runId: newRunId(),
-      includeReplies: runController.get(platform).includeReplies,
-    })
-  })
   createWindow()
   // Pekerjaan yang tidak terlihat: jendela lebih dulu, baru cleanup DB &
   // hangatkan preferensi di background.
