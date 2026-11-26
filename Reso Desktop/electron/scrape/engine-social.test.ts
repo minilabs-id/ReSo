@@ -12,6 +12,7 @@ import {
   findCommentsDocId,
   IG_GQL_CAPTURE_JS,
 } from './instagram-graphql'
+import { attachCdp } from './cdp'
 import {
   isPlausibleHandle,
   shouldIncludeCandidate,
@@ -122,5 +123,26 @@ ok(gql.includes('PolarisPostCommentsPaginationQuery'), 'friendly name diganti se
 ok(gql.includes('after'), 'paginasi memakai after cursor')
 ok(IG_GQL_CAPTURE_JS.includes('XMLHttpRequest.prototype.open'), 'penangkap template memasang XHR')
 ok(IG_GQL_CAPTURE_JS.includes('__resoGqlCaptureInstalled'), 'capture idempoten')
+
+// --- dependency CDP ---
+const cdpCalls: string[] = []
+let attached = false
+const fakeWc = {
+  debugger: {
+    isAttached: () => attached,
+    attach: (v: string) => { attached = true; cdpCalls.push('attach:' + v) },
+    sendCommand: async (method: string) => {
+      cdpCalls.push(method)
+      return { identifier: 'script-1', result: { value: 'terpasang' } }
+    },
+  },
+} as any
+const cdp = await attachCdp(fakeWc, 1)
+eq(await cdp.evaluate('1+1'), 'terpasang', 'evaluate CDP mengembalikan value')
+eq(await cdp.addDocumentStartScript('x'), 'script-1', 'script document-start terpasang')
+ok(cdpCalls.includes('attach:1.3'), 'CDP attach memakai versi 1.3')
+ok(cdpCalls.includes('Page.enable'), 'domain Page dinyalakan')
+ok(cdpCalls.includes('Runtime.enable'), 'domain Runtime dinyalakan')
+ok(cdpCalls.includes('Page.addScriptToEvaluateOnNewDocument'), 'capture dipasang sebelum dokumen')
 
 console.log(`engine-social: ${n} checks OK`)

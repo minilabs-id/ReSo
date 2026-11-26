@@ -20,6 +20,8 @@ const api = {
       ipcRenderer.invoke(IPC.scrapeNavigate, platform, url),
     openOwnProfile: (platform: string): Promise<string> =>
       ipcRenderer.invoke(IPC.scrapeBrowserOwnProfile, platform),
+    captureStatus: (platform: string): Promise<{ installed: boolean; error?: string }> =>
+      ipcRenderer.invoke(IPC.scrapeCaptureStatus, platform),
     back: (platform: string): Promise<boolean> => ipcRenderer.invoke(IPC.scrapeBrowserBack, platform),
     forward: (platform: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC.scrapeBrowserForward, platform),

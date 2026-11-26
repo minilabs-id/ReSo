@@ -87,6 +87,8 @@ export interface ResoScrapeBrowserBridge {
   navigate: (platform: string, url: string) => Promise<boolean>
   /** Arahkan browser ke profil akun yang sedang login; return URL akhir. */
   openOwnProfile: (platform: string) => Promise<string>
+  /** Dependency CDP fallback GraphQL sudah terpasang atau tidak. */
+  captureStatus: (platform: string) => Promise<{ installed: boolean; error?: string }>
   getUrl: (platform: string) => Promise<string>
   back: (platform: string) => Promise<boolean>
   forward: (platform: string) => Promise<boolean>
@@ -180,6 +182,16 @@ export async function openOwnProfile(platform: string): Promise<string> {
     return await window.reso!.browser.openOwnProfile(platform)
   } catch {
     return ''
+  }
+}
+
+/** Cek dependency CDP yang dipakai fallback GraphQL. */
+export async function getCaptureStatus(platform: string): Promise<{ installed: boolean; error?: string }> {
+  if (!isElectron) return { installed: false }
+  try {
+    return await window.reso!.browser.captureStatus(platform)
+  } catch {
+    return { installed: false, error: 'IPC tidak tersedia' }
   }
 }
 

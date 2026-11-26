@@ -33,6 +33,7 @@ export const IPC = {
   scrapeSetBounds: 'reso:scrape:set-bounds',
   scrapeNavigate: 'reso:scrape:navigate',
   scrapeBrowserOwnProfile: 'reso:scrape:browser-own-profile',
+  scrapeCaptureStatus: 'reso:scrape:capture-status',
   scrapeBrowserBack: 'reso:scrape:browser-back',
   scrapeBrowserForward: 'reso:scrape:browser-forward',
   scrapeBrowserReload: 'reso:scrape:browser-reload',

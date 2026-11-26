@@ -25,6 +25,7 @@ import {
   tiktokOwnHrefFromHtml,
 } from '../../src/shared/own-profile'
 import { IG_GQL_CAPTURE_JS } from './instagram-graphql'
+import { attachCdp } from './cdp'
 
 /** Ukuran awal view tersembunyi — halaman butuh viewport wajar agar lazy-load jalan. */
 const VIEW_WIDTH = 1280
@@ -44,8 +45,8 @@ const lastCookieSync = new Map<Platform, number>()
 export interface HostHandle {
   view: WebContentsView
   ses: Session
-  /** Fallback GraphQL IG sudah dipasang di document-start. */
-  gqlCaptureInstalled?: boolean
+  /** Dependency CDP untuk fallback GraphQL IG (status bisa dilihat UI). */
+  gqlCapture?: { installed: boolean; scriptId?: string; error?: string }
 }
 
 const hosts = new Map<Platform, HostHandle>()
@@ -192,29 +193,33 @@ export function getHost(win: BrowserWindow, platform: Platform): HostHandle {
   const handle: HostHandle = { view, ses }
   hosts.set(platform, handle)
 
-  // Pasang penangkap template GraphQL IG sebelum halaman apa pun berjalan.
-  // Kegagalan attach (misal devtools eksternal) tidak boleh mematikan host.
-  if (platform === 'instagram') {
-    try {
-      if (!view.webContents.debugger.isAttached()) view.webContents.debugger.attach('1.3')
-      void view.webContents.debugger
-        .sendCommand('Page.enable')
-        .then(() =>
-          view.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-            source: IG_GQL_CAPTURE_JS,
-          })
-        )
-        .then(() => {
-          handle.gqlCaptureInstalled = true
-        })
-        .catch(() => {
-          /* fallback GraphQL tidak tersedia — REST tetap jalan */
-        })
-    } catch {
-      /* debugger tidak bisa dipasang */
-    }
-  }
+  // Dependency wajib: pasang penangkap template GraphQL sebelum halaman apa pun
+  // dimuat. Statusnya disimpan & bisa ditanyakan UI (bukan try/catch diam-diam).
+  if (platform === 'instagram') void installInstagramGqlCapture(handle)
   return handle
+}
+
+/** Pasang CDP dependency untuk fallback GraphQL Instagram. */
+async function installInstagramGqlCapture(handle: HostHandle): Promise<void> {
+  if (handle.gqlCapture?.installed) return
+  try {
+    const cdp = await attachCdp(handle.view.webContents)
+    const scriptId = await cdp.addDocumentStartScript(IG_GQL_CAPTURE_JS)
+    handle.gqlCapture = { installed: true, scriptId }
+  } catch (err) {
+    handle.gqlCapture = { installed: false, error: String(err).slice(0, 180) }
+  }
+}
+
+/** Status dependency CDP — dipakai UI untuk memberi tahu bila fallback mati. */
+export function getGqlCaptureStatus(platform: Platform): {
+  installed: boolean
+  error?: string
+} {
+  const host = hosts.get(platform)
+  if (!host) return { installed: false, error: 'host belum dibuat' }
+  if (!host.gqlCapture) return { installed: false, error: 'sedang dipasang' }
+  return host.gqlCapture
 }
 
 /* ------------------------------------------------------------------ */

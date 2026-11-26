@@ -14,6 +14,7 @@ import {
   setScrapeBrowserBounds,
   navigateScrapeBrowser,
   openOwnProfile,
+  getCaptureStatus,
   browserBack,
   browserForward,
   browserReload,
@@ -109,6 +110,7 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
   const [browserUrl, setBrowserUrl] = useState<string>(DEFAULT_URL.tiktok);
   const [browserError, setBrowserError] = useState('');
   const [browserLoading, setBrowserLoading] = useState(false);
+  const [capture, setCapture] = useState<{ installed: boolean; error?: string } | null>(null);
   const [navState, setNavState] = useState({ canBack: false, canForward: false });
 
   useEffect(() => {
@@ -195,6 +197,13 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
       setBrowserUrl(target);
       setBrowserError('');
       setNavState(await getBrowserNavState(platform));
+      // Dependency CDP dipasang async — tunggu statusnya sebelum dilaporkan.
+      for (let i = 0; i < 12; i++) {
+        const st = await getCaptureStatus(platform);
+        setCapture(st);
+        if (st.installed || st.error) break;
+        await new Promise((r) => setTimeout(r, 250));
+      }
     })();
 
     const offNav = onBrowserNavigated(({ platform: p, url }) => {
@@ -492,6 +501,11 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
             <p className="text-[11px] text-slate-500">
               Browser otomatis dibuka di profil sendiri. Buka satu postingan → klik
               <b> Ambil nama dari halaman ini</b>. Nama langsung masuk rekap harian.
+              {platform === 'instagram' && capture && !capture.installed && (
+                <span className="text-amber-700">
+                  {' '}Fallback GraphQL tidak aktif (CDP: {capture.error || 'menunggu'}).
+                </span>
+              )}
             </p>
           </div>
 
