@@ -304,11 +304,11 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
   }, [platform]);
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-5xl">
+    <div className="p-4 lg:p-5 space-y-3 max-w-[1400px]">
       <div>
         <h1 className="text-xl font-bold text-slate-900">Ambil Nama Komentar</h1>
-        <p className="text-[11px] text-slate-500 mt-1">
-          Mode native (Electron). Ambil nama komentator langsung dari browser bawaan aplikasi.
+        <p className="text-[11px] text-slate-500 mt-0.5">
+          Ambil nama komentator langsung dari browser bawaan aplikasi.
         </p>
       </div>
 
@@ -326,7 +326,7 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
         ))}
       </div>
 
-      <Card className="p-4 sm:p-5 space-y-3">
+      <Card className="p-4 space-y-2">
         {/* Toolbar: navigasi browser + alamat. Pintasan platform dihapus —
             pemilih platform di atas sudah satu-satunya tempat berganti platform. */}
         <div className="flex flex-wrap items-center gap-2">
@@ -424,7 +424,7 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
         <div
           role="status"
           aria-live="polite"
-          className={`min-h-[92px] rounded-xl border px-3 py-2 text-[11px] leading-relaxed ${CALLOUT_TONE[tone]}`}
+          className={`min-h-[68px] rounded-xl border px-3 py-1.5 text-[11px] leading-snug ${CALLOUT_TONE[tone]}`}
         >
           <div className="flex items-start gap-2">
             <span className={`mt-0.5 inline-block h-2 w-2 shrink-0 rounded-full ${DOT_TONE[tone]}`} aria-hidden />
@@ -437,10 +437,10 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
               <span className="font-medium break-words">{shownMessage}</span>
             )}
           </div>
-          <div className="mt-1 min-h-[16px] break-words pl-4 text-slate-500">
+          <div className="mt-0.5 min-h-[14px] break-words pl-4 text-slate-500">
             {targetLabel ? `Target: ${targetLabel}` : ''}
           </div>
-          <div className="mt-1 flex min-h-[28px] items-center pl-4">
+          <div className="mt-0.5 flex min-h-[22px] items-center pl-4">
             {lastHandoff && (
               <div className="flex w-full flex-wrap items-center justify-between gap-2">
                 <span className="font-semibold text-emerald-800">
@@ -460,7 +460,7 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
 
         <div
           ref={browserRef}
-          className="relative h-[520px] w-full rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
+          className="relative h-[clamp(520px,calc(100dvh-330px),900px)] w-full rounded-xl border border-slate-200 bg-slate-50 overflow-hidden"
           role="region"
           aria-label={`Browser ${PLATFORM_LABEL_FULL[platform]}`}
         >
@@ -476,7 +476,7 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
         </p>
       </Card>
 
-      <Card className="p-4 sm:p-5 space-y-3">
+      <Card className="p-4 space-y-2">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold text-slate-900">
             Terakhir diambil — {state.count} {wordFor(platform)}

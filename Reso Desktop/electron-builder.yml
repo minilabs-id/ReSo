@@ -19,18 +19,20 @@ asar: true
 npmRebuild: false
 asarUnpack:
   - node_modules/better-sqlite3/build/Release/**/*
+# Ikon .exe ditanamkan lewat afterPack (rcedit langsung) karena winCodeSign
+# butuh privilegi symlink yang tidak selalu tersedia di mesin dev.
+afterPack: scripts/after-pack.cjs
 win:
-  # Lewati winCodeSign/rcedit: ekstraksinya butuh privilegi symlink yang tidak
-  # selalu tersedia di mesin dev. Tidak mengubah cara kerja aplikasi; ikon &
-  # metadata installer tetap diatur NSW oleh NSIS.
   signAndEditExecutable: false
   target:
     - target: nsis
       arch:
         - x64
-  icon: assets/icons/icon256.png
+  icon: assets/icon.ico
 nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
   artifactName: ReSoSetup-${version}.${ext}
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico

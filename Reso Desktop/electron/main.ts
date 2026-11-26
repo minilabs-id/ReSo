@@ -192,8 +192,8 @@ function setupAutoUpdater(): void {
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    width: 1500,
+    height: 950,
     // Harus >= breakpoint `lg` (1024px) Tailwind, kalau tidak sidebar desktop
     // berubah jadi hamburger+bottom nav pada jendela minimum 960px.
     minWidth: 1024,
