@@ -44,6 +44,13 @@ const UnmatchedReview = React.lazy(() =>
   import('../features/rekap/UnmatchedReview').then((m) => ({ default: m.UnmatchedReview }))
 );
 
+/** Placeholder tinggi tetap: tidak menggeser konten saat chunk lazy dimuat. */
+const PageSkeleton = () => (
+  <div className="flex min-h-[420px] items-center justify-center rounded-xl border border-slate-200 bg-white text-[11px] font-semibold text-slate-500">
+    Memuat halaman…
+  </div>
+);
+
 // Batas pegawai untuk export gambar — satu lembar gambar, lebih dari ini wajib PDF/Excel.
 const IMAGE_EXPORT_LIMIT = 60;
 
@@ -81,7 +88,7 @@ export default function EngagementDashboard() {
       void import('./tabs/SettingsTab');
       void import('../features/rekap/UnmatchedReview');
       void import('./EmployeeManager');
-    }, 1200);
+    }, 300);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -537,7 +544,6 @@ export default function EngagementDashboard() {
                 <p className="text-xs text-slate-500 mt-0.5">Rekapitulasi engagement pegawai per periode</p>
               </div>
             )}
-            <React.Suspense fallback={null}>
             <AnimatePresence mode="wait">
               {activeTab === 'dashboard' && (
                 <DashboardTab 
@@ -570,6 +576,7 @@ export default function EngagementDashboard() {
                     isOutsideHistoryWindow={isOutsideHistoryWindow}
                     notifyHistoryLimit={notifyHistoryLimit}
                   />
+                  <React.Suspense fallback={null}>
                   <InputModal
                     open={isInputModalOpen}
                     date={currentDailyDateStr}
@@ -581,8 +588,10 @@ export default function EngagementDashboard() {
                     closeGuardRef={inputCloseGuardRef}
                     onOpenUnmatched={() => setIsUnmatchedReviewOpen(true)}
                   />
+                  </React.Suspense>
 
                   {/* Modal review nama belum terpetakan — lewat ModalHost tunggal */}
+                  <React.Suspense fallback={null}>
                                     <UnmatchedReview
                     open={isUnmatchedReviewOpen}
                     onClose={() => setIsUnmatchedReviewOpen(false)}
@@ -595,6 +604,7 @@ export default function EngagementDashboard() {
                     onMap={handleMapUnmatched}
                     onRematch={handleRematchOnly}
                   />
+                  </React.Suspense>
                 </motion.div>
               )}
 
@@ -678,17 +688,18 @@ export default function EngagementDashboard() {
                   animate="visible"
                   exit="hidden"
                 >
-                  <React.Suspense fallback={<div className="w-full h-full flex mt-20 items-center justify-center text-slate-500 text-[11px] font-bold">Memuat Modul Data Pegawai...</div>}>
+                  <React.Suspense fallback={<PageSkeleton />}>
                     <EmployeeManager employees={employees} />
                   </React.Suspense>
                 </motion.div>
               )}
 
             {activeTab === 'pengaturan' && (
-              <SettingsTab />
+              <React.Suspense fallback={<PageSkeleton />}>
+                <SettingsTab />
+              </React.Suspense>
             )}
           </AnimatePresence>
-            </React.Suspense>
         </div>
       </div>
     </main>
