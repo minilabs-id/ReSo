@@ -175,7 +175,7 @@ async function execute(
       type: 'DONE',
       runId,
       reason: result.reason,
-      ...(result.zeroComments ? { note: 'Postingan ini tidak punya komentar.' } : {}),
+      ...(result.note ? { note: result.note } : {}),
     })
     return
   }

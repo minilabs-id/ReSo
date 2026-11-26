@@ -133,7 +133,38 @@ username yang sengaja di-dedupe. Batas waktu IG diperlebar ke minimal 180 dtk.
 6. Semua nama tetap melewati `isPlausibleHandle` + `mergeNames` sebelum masuk
    rekap; handoff tidak diubah.
 
-## 8. Sumber
+## 8. Fallback kedua (riset lanjutan)
+
+Jalur REST tetap satu titik kegagalan. Setelah riset lanjutan:
+
+- **GraphQL Relay** `PolarisPostCommentsPaginationQuery` terbukti bisa dipanggil
+  dari halaman dan mengembalikan username komentar. Dua hal yang harus
+  ditemukan saat runtime:
+  1. `doc_id` — dibaca dari bundle JS (`..._instagramRelayOperation` →
+     `a.exports="<digits>"`). Riset menemukan `29250323357962155` pada sesi uji;
+     kode tidak meng-hardcode nilai ini.
+  2. Template parameter (`lsd`, `__dyn`, `__csr`, `fb_dtsg`, …) — ditangkap dari
+     request GraphQL asli halaman dengan patch XHR/fetch yang dipasang di
+     document-start lewat CDP `Page.addScriptToEvaluateOnNewDocument`.
+  - Variabel wajib: `after`, `first`, `is_mobile_web`,
+    `liked_by_author_badge_enabled`, `media_id` (string!), `sort_order`, plus
+    variabel relay internal. `media_id` bertipe ID Relay → harus string;
+    angka 19 digit dibulatkan JS dan mengembalikan `comments_media: null`.
+  - Paginasi: `page_info.after` / `end_cursor` (`has_next_page`).
+  - Uji: 122 username dari carousel 169 komentar tanpa memanggil REST sama sekali.
+
+- **Jalur yang terbukti buntu** (tidak dipakai):
+  - `https://i.instagram.com/api/v1/media/.../comments/` → `status: fail`
+    (cookies `www` tidak diterima host tersebut).
+  - HTML awal halaman → tidak mengandung array `comments` yang bisa dipanen.
+  - Menangkap respons GraphQL bawaan saat halaman dibuka → ada, tapi isinya
+    feed/badge/reels, bukan daftar komentar (panel tidak terbuka).
+  - GraphQL dengan doc_id lama dari literatur → error `missing_required_variable_value`.
+
+Engine sekarang: REST → bila belum tuntas/gagal → GraphQL → bila tetap gagal,
+pesan error jujur (tidak lagi menyarankan klik "View all comments").
+
+## 9. Sumber
 
 - `subzeroid/instagrapi` — `instagrapi/mixins/comment.py`,
   `instagrapi/mixins/media.py`, `instagrapi/utils/ids.py`

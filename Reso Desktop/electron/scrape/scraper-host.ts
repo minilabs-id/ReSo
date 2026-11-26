@@ -24,6 +24,7 @@ import {
   instagramOwnUsernameFromHtml,
   tiktokOwnHrefFromHtml,
 } from '../../src/shared/own-profile'
+import { IG_GQL_CAPTURE_JS } from './instagram-graphql'
 
 /** Ukuran awal view tersembunyi — halaman butuh viewport wajar agar lazy-load jalan. */
 const VIEW_WIDTH = 1280
@@ -43,6 +44,8 @@ const lastCookieSync = new Map<Platform, number>()
 export interface HostHandle {
   view: WebContentsView
   ses: Session
+  /** Fallback GraphQL IG sudah dipasang di document-start. */
+  gqlCaptureInstalled?: boolean
 }
 
 const hosts = new Map<Platform, HostHandle>()
@@ -188,6 +191,29 @@ export function getHost(win: BrowserWindow, platform: Platform): HostHandle {
 
   const handle: HostHandle = { view, ses }
   hosts.set(platform, handle)
+
+  // Pasang penangkap template GraphQL IG sebelum halaman apa pun berjalan.
+  // Kegagalan attach (misal devtools eksternal) tidak boleh mematikan host.
+  if (platform === 'instagram') {
+    try {
+      if (!view.webContents.debugger.isAttached()) view.webContents.debugger.attach('1.3')
+      void view.webContents.debugger
+        .sendCommand('Page.enable')
+        .then(() =>
+          view.webContents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+            source: IG_GQL_CAPTURE_JS,
+          })
+        )
+        .then(() => {
+          handle.gqlCaptureInstalled = true
+        })
+        .catch(() => {
+          /* fallback GraphQL tidak tersedia — REST tetap jalan */
+        })
+    } catch {
+      /* debugger tidak bisa dipasang */
+    }
+  }
   return handle
 }
 

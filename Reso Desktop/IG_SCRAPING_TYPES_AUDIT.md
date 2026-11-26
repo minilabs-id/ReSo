@@ -34,6 +34,9 @@ Tidak ada copy/paste manual. Rekap harian terisi otomatis via handoff.
    postingan saat proses, hasil dibuang.
 6. **Pesan akhir jujur** untuk postingan tanpa komentar.
 7. Satu tombol saja di panel; tombol "Scrap" in-page dihapus.
+8. **Fallback GraphQL independen** bila REST gagal/belum tuntas: doc_id dari
+   bundle + template parameter yang ditangkap dari request asli halaman.
+   Kedua jalur gagal → pesan error jujur, bukan saran klik panel.
 
 ## Catatan
 

@@ -8,6 +8,11 @@
 import { buildHarvestScript } from './engine-social'
 import { buildInstagramApiHarvestScript, shortcodeToPk } from './instagram-api'
 import {
+  buildInstagramGraphqlHarvestScript,
+  findCommentsDocId,
+  IG_GQL_CAPTURE_JS,
+} from './instagram-graphql'
+import {
   isPlausibleHandle,
   shouldIncludeCandidate,
   type HandleCandidate,
@@ -101,5 +106,21 @@ ok(
   buildInstagramApiHarvestScript({ maxPages: 10, includeReplies: false }).includes('INCLUDE_REPLIES = false'),
   'includeReplies=false tidak mengambil balasan'
 )
+
+// --- fallback GraphQL (jalur independen dari REST) ---
+eq(
+  findCommentsDocId('__d("PolarisPostCommentsPaginationQuery_instagramRelayOperation",[],(function(t,n,r,o,a,i){a.exports="29250323357962155"})'),
+  '29250323357962155',
+  'doc_id GraphQL ditemukan dari bundle'
+)
+eq(findCommentsDocId('bundle tanpa query'), '', 'doc_id kosong bila tidak ada')
+const gql = buildInstagramGraphqlHarvestScript({ maxPages: 200, includeReplies: false })
+ok(gql.includes('findDocId'), 'doc_id dicari saat runtime')
+ok(gql.includes('window.__resoGqlTemplate'), 'memakai template request asli halaman')
+ok(gql.includes('comments_media'), 'membaca connection komentar Relay')
+ok(gql.includes('PolarisPostCommentsPaginationQuery'), 'friendly name diganti sesuai query')
+ok(gql.includes('after'), 'paginasi memakai after cursor')
+ok(IG_GQL_CAPTURE_JS.includes('XMLHttpRequest.prototype.open'), 'penangkap template memasang XHR')
+ok(IG_GQL_CAPTURE_JS.includes('__resoGqlCaptureInstalled'), 'capture idempoten')
 
 console.log(`engine-social: ${n} checks OK`)

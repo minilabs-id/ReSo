@@ -14,6 +14,10 @@ import type { WebContentsView } from 'electron'
 import { mergeNames } from '../../src/shared/normalize'
 import { isPlausibleHandle, shouldIncludeCandidate } from './engine-social-logic'
 import { buildInstagramApiHarvestScript, type InstagramApiHarvestResult } from './instagram-api'
+import {
+  buildInstagramGraphqlHarvestScript,
+  type InstagramGraphqlHarvestResult,
+} from './instagram-graphql'
 
 // ===================== Tipe publik =====================
 
@@ -31,6 +35,8 @@ export interface SocialCaptureResult {
   names: string[]
   reason: 'complete' | 'incomplete' | 'stopped' | 'error' | 'timeout'
   detail?: string
+  /** Catatan ringkas untuk UI (jumlah komentar/halaman, atau 0 komentar). */
+  note?: string
   /** Postingan memang tidak punya komentar (bukan kegagalan scraping). */
   zeroComments?: boolean
 }
@@ -392,14 +398,21 @@ export async function runSocialCapture(
     })
 
   /** Akhiri run: normalisasi + dedupe final lewat aturan platform masing-masing. */
-  const finish = (reason: SocialCaptureResult['reason'], detail?: string): SocialCaptureResult => {
+  const finish = (
+    reason: SocialCaptureResult['reason'],
+    detail?: string,
+    note?: string
+  ): SocialCaptureResult => {
     const merged = mergeNames([], names, usePlatform)
     let finalDetail = detail
     if (!merged.length && reason !== 'error' && reason !== 'stopped' && !finalDetail) {
       finalDetail = ZERO_NAMES_DETAIL
     }
-    const zero = zeroComments ? { zeroComments: true } : {}
-    return finalDetail ? { names: merged, reason, detail: finalDetail, ...zero } : { names: merged, reason, ...zero }
+    const extra = {
+      ...(zeroComments ? { zeroComments: true } : {}),
+      ...(note ? { note } : {}),
+    }
+    return finalDetail ? { names: merged, reason, detail: finalDetail, ...extra } : { names: merged, reason, ...extra }
   }
 
   /** Tambah nama baru (dedupe case-insensitive). Returns jumlah yang baru. */
@@ -432,9 +445,18 @@ export async function runSocialCapture(
       return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
     }
 
-    // Instagram: jalur utama = endpoint internal. Tidak bergantung pada tombol
-    // "View all comments" yang sering diabaikan IG. DOM tetap sebagai fallback.
+    // Instagram: dua jalur independen. REST dulu, lalu GraphQL Relay dengan
+    // doc_id yang ditemukan dari bundle — bukan klik DOM yang diabaikan IG.
     if (usePlatform === 'instagram') {
+      const restNames: string[] = []
+      const gqlNames: string[] = []
+      let restComplete = false
+      let gqlComplete = false
+      let zero = false
+      let commentCount = 0
+      let restStatus = 'kosong'
+      let gqlStatus = 'tidak-dijalankan'
+
       try {
         const api = await runJs<InstagramApiHarvestResult>(
           buildInstagramApiHarvestScript({
@@ -443,25 +465,57 @@ export async function runSocialCapture(
             includeReplies: options.includeReplies,
           })
         )
-        if (api && (api.status === 'ok' || api.names.length)) {
-          if (lockedPath && pathOf(wc.getURL()) !== lockedPath) {
-            return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
-          }
-          const valid = [...api.names, ...api.replyNames].filter(isPlausibleHandle)
-          if (valid.length) {
-            addFound(valid)
-            // Kalau cursor masih tersisa, laporkan belum tuntas agar operator
-            // tahu hasilnya sebagian — bukan mengklaim 100%.
-            return finish(api.complete ? 'complete' : 'incomplete')
-          }
-          if (api.zero) {
-            zeroComments = true
-            return finish('complete', 'Postingan ini tidak punya komentar.')
-          }
+        if (api) {
+          restStatus = api.status
+          commentCount = api.commentCount
+          restNames.push(...api.names, ...api.replyNames)
+          restComplete = api.complete
+          zero = api.zero
         }
-      } catch {
-        /* API berubah / sesi bermasalah → lanjut ke panen DOM */
+      } catch (e) {
+        restStatus = 'error:' + String(e).slice(0, 48)
       }
+
+      if (!restComplete && !zero) {
+        try {
+          const gql = await runJs<InstagramGraphqlHarvestResult>(
+            buildInstagramGraphqlHarvestScript({
+              maxPages: 500,
+              includeReplies: options.includeReplies,
+            })
+          )
+          if (gql) {
+            gqlStatus = gql.status
+            gqlNames.push(...gql.names)
+            gqlComplete = gql.complete
+            commentCount = Math.max(commentCount, gql.commentCount)
+          }
+        } catch (e) {
+          gqlStatus = 'error:' + String(e).slice(0, 48)
+        }
+      }
+
+      if (lockedPath && pathOf(wc.getURL()) !== lockedPath) {
+        return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
+      }
+
+      const valid = [...new Set([...restNames, ...gqlNames])].filter(isPlausibleHandle)
+      if (valid.length) {
+        addFound(valid)
+        const complete = restComplete || gqlComplete
+        const note = complete
+          ? `Tuntas — ${valid.length} username dari ${commentCount} komentar.`
+          : `Sebagian — ${valid.length} username dari ${commentCount} komentar; ulangi untuk melengkapi.`
+        return finish(complete ? 'complete' : 'incomplete', undefined, note)
+      }
+      if (zero) {
+        zeroComments = true
+        return finish('complete', 'Postingan ini tidak punya komentar.', 'Postingan ini tidak punya komentar.')
+      }
+      return finish(
+        'error',
+        `Gagal mengambil komentar Instagram (REST: ${restStatus}, GraphQL: ${gqlStatus}). Pastikan sudah login & tidak kena rate limit.`
+      )
     }
 
     // Best-effort: buka panel komentar bila belum terbuka.
@@ -470,11 +524,6 @@ export async function runSocialCapture(
     } catch {
       /* abaikan — post mungkin sudah terbuka */
     }
-    // Instagram butuh klik trusted; klik programatik di atas sering diabaikan.
-    if (usePlatform === 'instagram') {
-      await openInstagramCommentsTrusted(view, runJs)
-    }
-
     // Panel komentar IG/FB butuh waktu untuk me-render setelah tombol diklik.
     // Tanpa jeda ini, putaran pertama memanen hanya penulis post lalu 3 putaran
     // kosong berikutnya mengakhiri run sebelum komentar sempat muncul.
