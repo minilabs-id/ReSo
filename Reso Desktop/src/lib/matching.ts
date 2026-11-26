@@ -68,6 +68,47 @@ function textMatches(needle: string, haystack: string): boolean {
   return re.test(haystack);
 }
 
+interface MatchIndex {
+  /** Satu regex alternasi untuk semua identitas — jutaan RegExp per run dihindari. */
+  reGlobal: RegExp
+  reOnce: RegExp
+  idsByNeedle: Map<string, string[]>
+}
+
+/**
+ * Indeks identitas pegawai → id. Alternasi diurutkan terpanjang dulu supaya
+ * "budi santoso" tidak dikalahkan "budi" oleh regex engine.
+ */
+function buildMatchIndex(employees: MatchableEmployee[], platform: EngagementPlatform): MatchIndex {
+  const idsByNeedle = new Map<string, string[]>()
+  for (const emp of employees) {
+    for (const needle of new Set(platformFields(emp, platform))) {
+      if (!needle) continue
+      const ids = idsByNeedle.get(needle)
+      if (ids) ids.push(emp.id)
+      else idsByNeedle.set(needle, [emp.id])
+    }
+  }
+  const needles = [...idsByNeedle.keys()]
+    .sort((a, b) => b.length - a.length)
+    .map(escapeRegExp)
+  const pattern = `(^|[^${TOKEN_CHAR}])(${needles.join('|')})(?=$|[^${TOKEN_CHAR}])`
+  return {
+    reGlobal: new RegExp(pattern, 'gu'),
+    reOnce: new RegExp(pattern, 'u'),
+    idsByNeedle,
+  }
+}
+
+function collectMatches(index: MatchIndex, haystack: string, out: Set<string>): void {
+  if (!haystack) return
+  index.reGlobal.lastIndex = 0
+  for (const m of haystack.matchAll(index.reGlobal)) {
+    const ids = index.idsByNeedle.get(m[2])
+    if (ids) for (const id of ids) out.add(id)
+  }
+}
+
 /**
  * Match raw engagement text against employee master data for one platform.
  * Returns unique employee IDs that appear to have engaged.
@@ -77,93 +118,18 @@ export function matchEmployeesToEngagement(
   employees: MatchableEmployee[],
   platform: EngagementPlatform
 ): string[] {
-  if (!input?.trim() || !employees?.length) return [];
+  if (!input?.trim() || !employees?.length) return []
 
-  const lowerInput = normalizeMatchText(input);
-  const inputLines = input
-    .toLowerCase()
-    .split(/[\n,;]+/)
-    .map((line) => normalizeMatchText(line))
-    .filter((line) => line.length > 0);
-
-  const matchedIds = new Set<string>();
-
-  for (const emp of employees) {
-    const nameMatch = normalizeField(emp.name);
-    const igMatch = normalizeField(emp.igUsername);
-    const igMatch2 = normalizeField(emp.igUsername2);
-    const fbMatch = normalizeField(emp.fbName);
-    const fbMatch2 = normalizeField(emp.fbName2);
-    const tiktokMatch = normalizeField(emp.tiktokName);
-    const tiktokMatch2 = normalizeField(emp.tiktokName2);
-
-    let isMatch = false;
-
-    if (nameMatch && textMatches(nameMatch, lowerInput)) isMatch = true;
-
-    if (!isMatch && platform === 'ig') {
-      if (igMatch && textMatches(igMatch, lowerInput)) isMatch = true;
-      if (igMatch2 && textMatches(igMatch2, lowerInput)) isMatch = true;
-    } else if (!isMatch && platform === 'fb') {
-      if (fbMatch && textMatches(fbMatch, lowerInput)) isMatch = true;
-      if (fbMatch2 && textMatches(fbMatch2, lowerInput)) isMatch = true;
-    } else if (!isMatch && platform === 'tiktok') {
-      if (tiktokMatch && textMatches(tiktokMatch, lowerInput)) isMatch = true;
-      if (tiktokMatch2 && textMatches(tiktokMatch2, lowerInput)) isMatch = true;
-    }
-
-    // Alias hasil pemetaan admin (antrian belum terpetakan) — lintas platform.
-    if (!isMatch && (emp.aliases || []).some((a) => textMatches(normalizeField(a), lowerInput))) {
-      isMatch = true;
-    }
-
-    if (!isMatch) {
-      for (const line of inputLines) {
-        if (textMatches(nameMatch, line)) {
-          isMatch = true;
-          break;
-        }
-        // Alias juga dicocokkan per-baris (nama yang sudah dipetakan otomatis
-        // match pada kiriman berikutnya).
-        if (!isMatch && (emp.aliases || []).some((a) => textMatches(normalizeField(a), line))) {
-          isMatch = true;
-          break;
-        }
-        if (platform === 'ig') {
-          if (igMatch && textMatches(igMatch, line)) {
-            isMatch = true;
-            break;
-          }
-          if (igMatch2 && textMatches(igMatch2, line)) {
-            isMatch = true;
-            break;
-          }
-        } else if (platform === 'fb') {
-          if (fbMatch && textMatches(fbMatch, line)) {
-            isMatch = true;
-            break;
-          }
-          if (fbMatch2 && textMatches(fbMatch2, line)) {
-            isMatch = true;
-            break;
-          }
-        } else if (platform === 'tiktok') {
-          if (tiktokMatch && textMatches(tiktokMatch, line)) {
-            isMatch = true;
-            break;
-          }
-          if (tiktokMatch2 && textMatches(tiktokMatch2, line)) {
-            isMatch = true;
-            break;
-          }
-        }
-      }
-    }
-
-    if (isMatch) matchedIds.add(emp.id);
+  const index = buildMatchIndex(employees, platform)
+  const matched = new Set<string>()
+  // Cek teks penuh (mendukung identitas multi-kata yang terpisah baris)…
+  collectMatches(index, normalizeMatchText(input), matched)
+  // …lalu tiap baris, seperti perilaku lama.
+  for (const line of input.toLowerCase().split(/[\n,;]+/)) {
+    const norm = normalizeMatchText(line)
+    if (norm) collectMatches(index, norm, matched)
   }
-
-  return Array.from(matchedIds);
+  return Array.from(matched)
 }
 
 /**
@@ -211,19 +177,17 @@ export function matchEngagementDetail(
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
+  const index = buildMatchIndex(employees, platform);
   const matchedIds = new Set<string>();
   const unmatched: string[] = [];
 
   for (const line of lines) {
     const norm = normalizeMatchText(line);
-    let lineMatched = false;
-    for (const emp of employees) {
-      if (platformFields(emp, platform).some((f) => textMatches(f, norm))) {
-        matchedIds.add(emp.id);
-        lineMatched = true;
-      }
+    if (!norm || !index.reOnce.test(norm)) {
+      unmatched.push(line);
+      continue;
     }
-    if (!lineMatched) unmatched.push(line);
+    collectMatches(index, norm, matchedIds);
   }
 
   return { matchedIds: Array.from(matchedIds), unmatched };

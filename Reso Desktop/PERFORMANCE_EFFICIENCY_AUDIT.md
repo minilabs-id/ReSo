@@ -169,4 +169,33 @@ data sintetis **200 pegawai + 120 hari rekap** di profil uji; pengukuran render
 Tidak ada bottleneck memori atau IPC: dengan 200 pegawai & 120 hari,
 latensi IPC masih **< 4 ms** dan render di bawah **35 ms**. Satu-satunya hot
 spot nyata adalah formatter tanggal — sudah diperbaiki. Sisa latency terbesar
-adalah **startup Electron (~5,4 s)** yang berada di luar kendali renderer.
+adalah startup Electron, yang kemudian diukur ulang lebih akurat (bagian 9).
+
+---
+
+## 9. Loop optimasi berulang (putaran akhir)
+
+Putaran ini mencari bottleneck yang tidak terlihat di profil UI biasa.
+
+### Temuan baru
+| # | Masalah | Pengukuran |
+|---|---------|-----------|
+| L1 | `matchEmployeesToEngagement()` / `matchEngagementDetail()` menyusun **jutaan RegExp** (per pasangan baris × pegawai). | 5.000 nama tak cocok × 200 pegawai: **2.101,9 ms** & **2.998,2 ms** — bisa membekukan main saat handoff scraping. |
+| L2 | Cleanup DB lama (`meta_api`) dan `getSettings()` dijalankan **sebelum jendela dibuat**. | Timing main: ready 160 → db 453 → ipc 478 → settings 614 → **window 695 ms**. |
+
+### Perbaikan
+- `src/lib/matching.ts`: indeks identitas pegawai → **satu regex alternasi** untuk semua nama/handle/alias, diurutkan terpanjang dulu; `matchAll()` sekali per teks. Tidak ada lagi RegExp per pasangan.
+- `electron/main.ts`: cleanup DB & hangatkan `electron-store` dipindah ke `setTimeout(..., 0)` **setelah** `createWindow()`.
+
+### Hasil loop
+| Metrik | Sebelum | Sesudah |
+|--------|---------|---------|
+| Match 5.000 miss × 200 emp | 2.101,9 ms | **25,5 ms** (~82×) |
+| Detail 5.000 miss × 200 emp | 2.998,2 ms | **1,6 ms** (~1.800×) |
+| Match 200 hit × 200 emp | 1,6 ms | 1,7 ms (tetap) |
+| Jendela dibuat | 695 ms | **94 ms** |
+| Cold start (spawn → H1, profil bersih) | — | **1.026 ms** |
+| Semua unit & stress test | lolos | lolos |
+
+Skrip pengukuran yang tersimpan: `scripts/deep-perf.mjs`, `scripts/cold-start.mjs`,
+`scripts/bench-matching.ts`, `scripts/perf-audit.mjs`, `scripts/perf-reload.mjs`.

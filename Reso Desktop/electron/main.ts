@@ -513,13 +513,8 @@ function hardenSession(): void {
 }
 
 app.whenReady().then(() => {
-  // Bersihkan sisa pengaturan lama dari database.
-  db.deleteSetting('meta_api')
   hardenSession()
   registerIpc()
-  // Hangatkan electron-store sekali saat start: akses pertama dari renderer
-  // (Pengaturan / runner scraper) tidak perlu menunggu baca file JSON.
-  getSettings()
   // Tombol "Scrap" yang di-inject ke halaman memicu run platform itu.
   onScrapClick((platform) => {
     // Satu sumber kebenaran: opsi dari state yang sudah disetel renderer lewat
@@ -531,6 +526,12 @@ app.whenReady().then(() => {
     })
   })
   createWindow()
+  // Pekerjaan yang tidak terlihat: jendela lebih dulu, baru cleanup DB &
+  // hangatkan preferensi di background.
+  setTimeout(() => {
+    db.deleteSetting('meta_api')
+    getSettings()
+  }, 0)
   setupAutoUpdater()
 
   app.on('activate', () => {
