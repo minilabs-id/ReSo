@@ -7,10 +7,10 @@
 
 | Jenis | URL | Hasil |
 |-------|-----|-------|
-| Foto, 2278 komentar | `instagram.com/p/Df12rYekjTt/` | **607 username** unik → rekap harian |
+| Foto, 2284 komentar | `instagram.com/p/Df12rYekjTt/` | **2232 username** unik → rekap harian (tuntas) |
 | Carousel, 169 komentar | `instagram.com/p/DgCratnknyJ/` | **121 username** → rekap harian |
 | Carousel, 11 komentar | `instagram.com/p/DgAJW8kkv0o/` | **5 username** → rekap harian |
-| Reel, 376 komentar | `instagram.com/reels/Df_iOFQSKqW/` | **198 username** → rekap harian |
+| Reel, 378 komentar | `instagram.com/reels/Df_iOFQSKqW/` | **199 username** → rekap harian (tuntas) |
 | Reel, 262 komentar | `instagram.com/reels/DeMhGZeSlri/` | **194 username** → rekap harian |
 | Reel (memang 0 komentar) | `instagram.com/reels/Df1KNKmPCUm/` | **0 username**, pesan: "Postingan ini tidak punya komentar." |
 
@@ -25,8 +25,9 @@ Tidak ada copy/paste manual. Rekap harian terisi otomatis via handoff.
    dengan cookie sesi + `X-IG-App-ID` + `X-CSRFToken`.
 2. **Media pk dari shortcode URL pakai BigInt** (HTML reel memuat media
    rekomendasi yang menyesatkan).
-3. **Paginasi dua mode**: `max_id` bila `has_more_comments`, `min_id` bila
-   `has_more_headload_comments`; guard cursor berulang, dedupe nama.
+3. **Paginasi dua mode & tuntas**: `max_id` bila `has_more_comments`, `min_id`
+   bila `has_more_headload_comments`; berhenti saat semua komentar terbaca atau
+   cursor habis, retry 429/5xx, guard cursor berulang, dedupe nama.
 4. **Balasan**: `preview_child_comments` + endpoint `inline_child_comments`
    (hanya bila opsi balasan aktif).
 5. **Target dikunci** ke postingan saat tombol ditekan; bila operator pindah

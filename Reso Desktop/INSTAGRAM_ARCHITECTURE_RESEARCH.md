@@ -58,6 +58,10 @@ while (has_more_comments && next_max_id) || (has_more_headload_comments && next_
 serta mengirim `max_id` **dan** `min_id`. Jadi **dua mode harus didukung**, bukan
 hanya `min_id` seperti implementasi pertama kita.
 
+Agar tuntas (bukan terikat `maxScrollRounds`), engine berhenti hanya bila
+`rawCount >= comment_count` atau cursor habis/berulang. Ada retry 4× dengan
+backoff untuk HTTP 429/5xx. Batas 500 halaman (~7500 komentar) hanya pengaman.
+
 `next_min_id` berupa string JSON:
 `{"cached_comments_cursor":"...","bifilter_token":"..."}` — dikirim utuh sebagai
 `min_id` (URL-encoded). Terverifikasi: 15 komentar/halaman, 30 halaman → 436
@@ -96,20 +100,22 @@ mengembalikan daftar komentar induk, bukan balasan. Jangan dipakai.
 
 | Postingan | Jenis | Hasil |
 |-----------|-------|-------|
-| `/p/Df12rYekjTt/` | foto, 2278 komentar | **607 username** unik masuk rekap |
+| `/p/Df12rYekjTt/` | foto, 2284 komentar | **2232 username** unik masuk rekap (tuntas, 116 dtk) |
 | `/p/DgCratnknyJ/` | carousel, 169 komentar | **121 username** masuk rekap |
 | `/p/DgAJW8kkv0o/` | carousel, 11 komentar | **5 username** masuk rekap |
 | `/reels/Df1KNKmPCUm/` | reel | **0 komentar memang** (bukan gagal) — API balas `comment_count: 0` |
-| `/reels/Df_iOFQSKqW/` | reel, 376 komentar | **198 username** → rekap harian |
+| `/reels/Df_iOFQSKqW/` | reel, 378 komentar | **199 username** → rekap harian (tuntas, 14 dtk) |
 | `/reels/DeMhGZeSlri/` | reel, 262 komentar | **194 username** → rekap harian |
 
 Reel ber-komentar ditemukan lewat `/api/v1/discover/topical_explore/` (endpoint
 `/api/v1/clips/user/` kena 429 pada sesi uji). Jalur reel memakai endpoint & pk
 yang sama dengan postingan `/p/`, jadi tidak ada kode khusus reel.
 
-Pengaturan profil uji: `maxScrollRounds: 42`, `captureTimeoutMs: 35000`.
-607 nama ≈ 42 halaman × 15, cocok dengan batas halaman → semua nama yang
-didapat berasal dari paginasi yang benar.
+Sebelum perbaikan terakhir, `maxScrollRounds: 42` membatasi hasil jadi 607 nama.
+Sekarang paginasi tidak terikat putaran scroll: berhenti saat
+`rawCount >= comment_count` atau cursor habis, dengan retry 429/5xx. Angka
+2232 dari 2284 komentar = seluruh komentar terbaca; selisihnya duplikat
+username yang sengaja di-dedupe. Batas waktu IG diperlebar ke minimal 180 dtk.
 
 ## 7. Konsekuensi untuk kode kita
 

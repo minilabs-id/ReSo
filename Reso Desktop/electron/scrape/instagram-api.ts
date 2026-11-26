@@ -4,9 +4,11 @@
  * Dasar implementasi (lihat INSTAGRAM_ARCHITECTURE_RESEARCH.md):
  * - shortcode → media pk memakai base64 BigInt (Number meleset di >2^53)
  * - paginasi mengikuti kontrak instagrapi / instagram-private-api:
- *   max_id bila has_more_comments,min_id bila has_more_headload_comments
+ *   max_id bila has_more_comments, min_id bila has_more_headload_comments
  * - balasan: preview_child_comments + endpoint inline_child_comments
  * - autentikasi memakai cookie sesi aplikasi (X-CSRFToken + X-IG-App-ID)
+ * - paginasi berjalan sampai cursor habis / comment_count tercapai, bukan
+ *   sampai angka putaran — retry 429/5xx dengan backoff.
  *
  * Modul ini tidak mengirim HTML ke main process — hanya string[] nama & metadata.
  */
@@ -27,7 +29,7 @@ export function shortcodeToPk(shortcode: string): string | null {
 }
 
 export interface InstagramApiHarvestOptions {
-  /** Maksimum halaman komentar (15 komentar per halaman). */
+  /** Jumlah halaman maksimum (pengaman; 15 komentar per halaman). */
   maxPages: number
   includeReplies: boolean
   /** Maksimum induk yang balasannya diambil lewat endpoint tambahan. */
@@ -40,14 +42,17 @@ export interface InstagramApiHarvestResult {
   names: string[]
   replyNames: string[]
   commentCount: number
+  /** Jumlah komentar mentah yang berhasil dibaca (sebelum dedupe). */
+  rawCount: number
   pages: number
   replyPages: number
   status: string
   id: string
-  /** true bila postingan memang 0 komentar (bukan kegagalan scraping). */
+  /** Postingan memang 0 komentar (bukan kegagalan). */
   zero: boolean
-  /** true bila cursor habis sebelum batas halaman tercapai. */
   exhausted: boolean
+  /** true bila semua komentar yang tersedia sudah terbaca. */
+  complete: boolean
 }
 
 /**
@@ -55,15 +60,19 @@ export interface InstagramApiHarvestResult {
  * Fetch relative memakai cookie sesi yang sudah tersimpan di partition view.
  */
 export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptions): string {
-  const pages = Math.max(1, Math.min(200, Math.floor(options.maxPages)))
-  const replyParents = Math.max(0, Math.min(60, Math.floor(options.maxReplyParents ?? 30)))
-  const replyPages = Math.max(0, Math.min(5, Math.floor(options.maxReplyPages ?? 2)))
+  const pages = Math.max(1, Math.min(500, Math.floor(options.maxPages)))
+  const replyParents = Math.max(0, Math.min(150, Math.floor(options.maxReplyParents ?? 80)))
+  const replyPages = Math.max(0, Math.min(5, Math.floor(options.maxReplyPages ?? 3)))
   return `(async () => {
     const MAX_PAGES = ${pages};
     const INCLUDE_REPLIES = ${options.includeReplies ? 'true' : 'false'};
     const MAX_REPLY_PARENTS = ${replyParents};
     const MAX_REPLY_PAGES = ${replyPages};
     const ALPHA = ${JSON.stringify(ALPHABET)};
+    const empty = (status) => ({
+      names: [], replyNames: [], commentCount: 0, rawCount: 0, pages: 0,
+      replyPages: 0, status, id: '', zero: false, exhausted: false, complete: false,
+    });
 
     const html = document.documentElement.innerHTML;
     // URL shortcode = identitas kanonik postingan yang dibuka operator.
@@ -75,7 +84,7 @@ export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptio
       let n = 0n;
       for (const ch of sc.slice(0, 11)) {
         const i = ALPHA.indexOf(ch);
-        if (i < 0) return { names: [], replyNames: [], commentCount: 0, pages: 0, replyPages: 0, status: 'bad-shortcode', id: '', zero: false, exhausted: false };
+        if (i < 0) return empty('bad-shortcode');
         n = n * 64n + BigInt(i);
       }
       id = n.toString();
@@ -85,7 +94,7 @@ export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptio
         || (html.match(/"pk":(\\d+)/) || [])[1]
         || null;
     }
-    if (!id) return { names: [], replyNames: [], commentCount: 0, pages: 0, replyPages: 0, status: 'no-post', id: '', zero: false, exhausted: false };
+    if (!id) return empty('no-post');
 
     const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
     const H = {
@@ -103,28 +112,44 @@ export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptio
       if (typeof u === 'string' && /^[A-Za-z0-9._]{1,30}$/.test(u)) arr.push(u);
     };
     const get = async (url) => {
-      const res = await fetch(url, { headers: H, credentials: 'include' });
-      if (!res.ok) throw new Error('HTTP-' + res.status);
-      return res.json();
+      for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+          const res = await fetch(url, { headers: H, credentials: 'include' });
+          if (res.status === 429 || res.status >= 500) {
+            await new Promise((r) => setTimeout(r, 900 * (attempt + 1)));
+            continue;
+          }
+          if (!res.ok) throw new Error('HTTP-' + res.status);
+          return await res.json();
+        } catch (e) {
+          if (attempt === 3) throw e;
+          await new Promise((r) => setTimeout(r, 700 * (attempt + 1)));
+        }
+      }
+      throw new Error('retry-exhausted');
     };
 
     let status = 'ok';
     let commentCount = 0;
+    let rawCount = 0;
     let pages = 0;
     let replyPages = 0;
     let exhausted = false;
+    let complete = false;
     let j = null;
 
     try {
       j = await get(base + firstQs);
       if (j.status && j.status !== 'ok') {
-        return { names, replyNames, commentCount, pages, replyPages, status: String(j.status), id, zero: false, exhausted: false };
+        return { ...empty(String(j.status)), id };
       }
       commentCount = Number(j.comment_count || 0);
+      if (commentCount === 0) complete = true;
 
       const used = new Set();
-      for (let p = 0; p < MAX_PAGES; p++) {
+      for (let p = 0; p < MAX_PAGES && !complete; p++) {
         const list = Array.isArray(j.comments) ? j.comments : [];
+        rawCount += list.length;
         for (const c of list) {
           if (c && c.user) push(names, c.user.username);
           if (!c) continue;
@@ -137,13 +162,16 @@ export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptio
         }
         pages++;
 
+        if (commentCount > 0 && rawCount >= commentCount) { complete = true; break; }
+
         // Kontrak resmi IG: prioritaskan max_id (kronologis), lalu min_id (ranked).
         let next = null;
         if (j.has_more_comments && j.next_max_id) next = { k: 'max_id', v: String(j.next_max_id) };
         else if (j.has_more_headload_comments && j.next_min_id) next = { k: 'min_id', v: String(j.next_min_id) };
 
         if (!next || used.has(next.k + ':' + next.v) || !list.length) {
-          exhausted = !!next && used.has(next.k + ':' + next.v);
+          if (!next) complete = true;
+          else if (used.has(next.k + ':' + next.v)) { exhausted = true; complete = true; }
           break;
         }
         used.add(next.k + ':' + next.v);
@@ -153,6 +181,7 @@ export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptio
           status = 'page:' + String(e).slice(0, 60);
           break;
         }
+        await new Promise((r) => setTimeout(r, 60));
       }
 
       if (INCLUDE_REPLIES && replyTargets.length && MAX_REPLY_PARENTS > 0 && MAX_REPLY_PAGES > 0) {
@@ -186,12 +215,14 @@ export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptio
       names,
       replyNames,
       commentCount,
+      rawCount,
       pages,
       replyPages,
       status,
       id,
       zero: status === 'ok' && commentCount === 0 && names.length === 0,
       exhausted,
+      complete: complete || (status === 'ok' && commentCount === 0),
     };
   })()`
 }

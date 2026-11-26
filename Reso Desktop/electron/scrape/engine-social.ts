@@ -351,8 +351,12 @@ export async function runSocialCapture(
   const names: string[] = []
   const seen = new Set<string>()
   const signal = options.signal
-  const deadline = Date.now() + Math.max(0, options.timeoutMs)
   const usePlatform: SocialPlatform = platform === 'instagram' ? 'instagram' : 'facebook'
+  // Instagram bisa punya ribuan komentar; batas waktu bawaan terlalu pendek
+  // untuk menuntaskan paginasi. Beri ruang lebih besar hanya pada jalur IG.
+  const budgetMs =
+    usePlatform === 'instagram' ? Math.max(180_000, options.timeoutMs) : Math.max(0, options.timeoutMs)
+  const deadline = Date.now() + budgetMs
   let zeroComments = false
 
   /**
@@ -434,7 +438,8 @@ export async function runSocialCapture(
       try {
         const api = await runJs<InstagramApiHarvestResult>(
           buildInstagramApiHarvestScript({
-            maxPages: Math.max(15, options.maxScrollRounds),
+            // Tidak terikat putaran scroll: habiskan cursor sampai tuntas.
+            maxPages: 500,
             includeReplies: options.includeReplies,
           })
         )
@@ -445,7 +450,9 @@ export async function runSocialCapture(
           const valid = [...api.names, ...api.replyNames].filter(isPlausibleHandle)
           if (valid.length) {
             addFound(valid)
-            return finish('complete')
+            // Kalau cursor masih tersisa, laporkan belum tuntas agar operator
+            // tahu hasilnya sebagian — bukan mengklaim 100%.
+            return finish(api.complete ? 'complete' : 'incomplete')
           }
           if (api.zero) {
             zeroComments = true

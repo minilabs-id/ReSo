@@ -76,7 +76,7 @@ eq(shortcodeToPk('Df12rYekjTt'), '4032369517111948525', 'shortcode → pk pakai 
 eq(shortcodeToPk('B1LbfVPlwIA'), '2110901750722920960', 'shortcode lama → pk sesuai instagrapi')
 eq(shortcodeToPk('bad!'), null, 'shortcode invalid ditolak')
 
-const apiIg = buildInstagramApiHarvestScript({ maxPages: 42, includeReplies: true })
+const apiIg = buildInstagramApiHarvestScript({ maxPages: 500, includeReplies: true })
 ok(apiIg.includes('BigInt'), 'konversi pk memakai BigInt')
 ok(
   apiIg.indexOf('location.pathname.match') < apiIg.indexOf('html.match'),
@@ -89,10 +89,13 @@ ok(apiIg.includes('has_more_headload_comments'), 'mendukung paginasi ranked')
 ok(apiIg.includes('preview_child_comments'), 'mengambil balasan dari payload utama')
 ok(apiIg.includes('inline_child_comments'), 'endpoint balasan yang benar')
 ok(!apiIg.includes('c.replies'), 'TIDAK memakai field replies yang tidak ada')
-ok(apiIg.includes('MAX_PAGES = 42'), 'batas halaman mengikuti pengaturan')
+ok(apiIg.includes('MAX_PAGES = 500'), 'paginasi tidak dibatasi putaran scroll')
+ok(apiIg.includes('res.status === 429'), 'retry otomatis saat IG memberi 429')
+ok(apiIg.includes('rawCount >= commentCount'), 'berhenti setelah semua komentar terbaca')
+ok(apiIg.includes('complete'), 'status tuntas dilaporkan ke engine')
 ok(
-  buildInstagramApiHarvestScript({ maxPages: 999, includeReplies: false }).includes('MAX_PAGES = 200'),
-  'batas halaman dibatasi maksimal 200'
+  buildInstagramApiHarvestScript({ maxPages: 9999, includeReplies: false }).includes('MAX_PAGES = 500'),
+  'batas halaman dibatasi maksimal 500 (pengaman)'
 )
 ok(
   buildInstagramApiHarvestScript({ maxPages: 10, includeReplies: false }).includes('INCLUDE_REPLIES = false'),
