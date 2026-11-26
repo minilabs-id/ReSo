@@ -10,6 +10,7 @@ import {
   onScrapeHandoff,
   getUpdateState,
   onUpdateStateChanged,
+  checkForUpdates,
   installUpdate,
   type UpdateState,
 } from '../lib/reso-bridge';
@@ -476,9 +477,37 @@ export default function EngagementDashboard() {
               <span className="text-[11px] font-medium text-slate-500">Memeriksa update…</span>
             )}
             {update.status === 'error' && (
-              <span className="truncate text-[11px] font-medium text-rose-600" title={update.message}>
+              <span className="flex items-center gap-1.5 text-[11px] font-medium text-rose-600">
                 Gagal memeriksa update
+                <button
+                  type="button"
+                  onClick={() => void checkForUpdates()}
+                  className="font-bold underline underline-offset-2 hover:text-rose-800"
+                  title={update.message}
+                >
+                  Coba lagi
+                </button>
               </span>
+            )}
+            {(update.status === 'idle' || update.status === 'not-available') && (
+              <button
+                type="button"
+                onClick={() => void checkForUpdates()}
+                className="text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:underline underline-offset-2"
+              >
+                Cek update
+              </button>
+            )}
+            {(update.status === 'ready' || update.status === 'error') && (
+              <a
+                href="https://github.com/minilabs-id/ReSo/releases"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-auto shrink-0 text-[11px] font-medium text-slate-500 hover:text-slate-800 hover:underline underline-offset-2"
+                title="Riwayat versi / rollback manual"
+              >
+                Riwayat versi
+              </a>
             )}
           </div>
         </div>

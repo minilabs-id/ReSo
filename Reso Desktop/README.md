@@ -55,13 +55,19 @@ Cadangan JSON di menu Pengaturan memuat pegawai, rekap, preferensi scraper, dan
 `better-sqlite3` 11.10 memakai prebuild Electron ABI 130; `npm run dist:win`
 menjalankan `npm run rebuild:native` lebih dulu. Tidak butuh Visual Studio.
 
+Error aplikasi (termasuk `console.error` renderer) dicatat ke
+`%APPDATA%\reso\reso-error.log` — sertakan file ini saat melapor masalah.
+Tidak ada telemetri/pengiriman data ke server.
+
 ## Auto-update
 
 Aplikasi hasil build (packaged) otomatis memeriksa rilis terbaru di
 [GitHub Releases](https://github.com/minilabs-id/ReSo/releases) setiap kali
 dibuka (jeda 4 detik agar startup tetap cepat). Bila ada versi baru, update
 diunduh otomatis dan tombol **"pasang sekarang"** muncul di footer sidebar.
-Mode development tidak melakukan pengecekan.
+Mode development tidak melakukan pengecekan. Tombol **Cek update** ada di footer
+sidebar; bila pengecekan gagal ada **Coba lagi**. Untuk kembali ke versi lama,
+buka **Riwayat versi** dan install installer versi sebelumnya (rollback manual).
 
 ## Arsitektur
 
@@ -100,7 +106,25 @@ Detail audit arsitektur: [`ARCHITECTURE_ALIGNMENT_AUDIT.md`](./ARCHITECTURE_ALIG
 | `npm run typecheck:desktop` | Typecheck main/preload |
 | `npm test` | Seluruh unit test |
 | `npm run test:stress` | Stress test matching (dijalankan terpisah) |
+| `npm run test:e2e` | Smoke test UI via CDP (app harus jalan di port 9223) |
+| `npm run verify:release` | Validasi artefak rilis lokal |
 | `npm run clean` | Hapus `out/` dan `release/` |
+
+## Checklist rilis
+
+1. **Tutup aplikasi yang berjalan** (bisa mengunci DLL di `release/win-unpacked`).
+2. Naikkan versi di `package.json`.
+3. `npm test` dan `npm run build`.
+4. `npm run dist:win` — menghasilkan installer + `latest.yml` + blockmap.
+5. `npm run verify:release` (lokal), lalu `node scripts/verify-release.mjs --remote`
+   setelah aset di-upload.
+6. Commit & push, lalu buat rilis GitHub:
+   `gh release create v<versi> release/ReSoSetup-<versi>.exe release/ReSoSetup-<versi>.exe.blockmap release/latest.yml --title "ReSo Desktop v<versi>" --notes "..."`
+
+> Installer saat ini **belum di-code-sign**. Untuk distribusi publik, siapkan
+> sertifikat code signing dan aktifkan `signAndEditExecutable` di
+> `electron-builder.yml` (atau set `CSC_LINK`/`CSC_KEY_PASSWORD`).
+
 
 ## Catatan
 

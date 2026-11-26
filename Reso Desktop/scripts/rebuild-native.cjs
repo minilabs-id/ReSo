@@ -19,7 +19,9 @@ async function main() {
       .version,
     arch: process.arch,
     onlyModules: ['better-sqlite3'],
-    force: true,
+    // Jangan `force`: @electron/rebuild lalu memakai prebuild Electron ABI 130
+    // dari better-sqlite3. `force: true` memaksa node-gyp, yang gagal pada path
+    // dengan spasi ("Reso Desktop") dan tidak perlu di mesin produksi.
   })
   console.log('rebuild selesai')
 }

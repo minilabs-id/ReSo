@@ -3,7 +3,7 @@
   "description": "ReSo — Rekap Engagement Sosmed (aplikasi desktop offline)",
   "author": "Diskominfo",
   "private": true,
-  "version": "1.0.88",
+  "version": "1.0.89",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
@@ -20,6 +20,8 @@
     "test:shared": "tsx src/shared/index.test.ts && tsx src/shared/run-state.test.ts && tsx electron/store/settings-schema.test.ts && tsx electron/store/state-schema.test.ts && tsx electron/scrape/engine-tiktok-logic.test.ts && tsx electron/scrape/engine-social.test.ts && tsx electron/scrape/engine.test.ts && tsx electron/db/schema.test.ts",
     "test:local-db": "tsx src/lib/local-db.test.ts",
     "test:date": "tsx src/lib/date.test.ts",
+    "test:e2e": "node scripts/e2e-smoke.mjs",
+    "verify:release": "node scripts/verify-release.mjs",
     "clean": "node -e \"const fs=require('fs');for(const d of ['dist','out','release'])fs.rmSync(d,{recursive:true,force:true})\"",
     "test": "npm run test:shared && npm run test:local-db && npm run test:matching && npm run test:date && npm run test:stress"
   },

@@ -4,6 +4,7 @@ import { createRequire } from 'module'
 // electron-updater adalah paket CommonJS — named import ESM gagal di runtime.
 const nodeRequire = createRequire(import.meta.url)
 const { autoUpdater } = nodeRequire('electron-updater') as typeof import('electron-updater')
+import { appendFileSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseBrowserBounds } from './ipc/contracts'
@@ -74,6 +75,29 @@ function broadcastDbChanged(): void {
     if (!win.isDestroyed()) win.webContents.send(IPC.dbChanged)
   }
 }
+
+// ===================== Log error lokal (tanpa telemetri jaringan) =====================
+
+/** Tulis ke %APPDATA%\reso\reso-error.log — bisa dikirim operator saat melapor. */
+export function logError(scope: string, err: unknown): void {
+  try {
+    const message = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err)
+    const stamp = new Date().toISOString()
+    appendFileSync(
+      join(app.getPath('userData'), 'reso-error.log'),
+      `[${stamp}] [${scope}] ${message.replace(/\n/g, ' | ')}\n`,
+      'utf8'
+    )
+  } catch {
+    /* menulis log tidak boleh menghentikan aplikasi */
+  }
+}
+
+process.on('uncaughtException', (err) => logError('uncaught', err))
+process.on('unhandledRejection', (err) => logError('unhandled', err))
+app.on('render-process-gone', (_event, _wc, details) =>
+  logError('render-process-gone', `${details.reason} (exit ${details.exitCode})`)
+)
 
 // ===================== Auto-update (GitHub Releases) =====================
 
@@ -167,6 +191,10 @@ function createWindow(): BrowserWindow {
   })
   mainWindow = win
   setScrapeMainWindow(win)
+  // level 3 = console.error di renderer — simpan untuk diagnosis lapangan.
+  win.webContents.on('console-message', (_event, level, message) => {
+    if (level === 3) logError('renderer', message)
+  })
 
   win.once('ready-to-show', () => win.show())
   win.on('closed', () => {
