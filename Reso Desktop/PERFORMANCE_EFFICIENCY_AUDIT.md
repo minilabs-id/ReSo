@@ -122,4 +122,3 @@ fitur bertambah.
 
 Pengukuran ulang: heap 9,5 MB, 164 node DOM, reload 427 ms — tidak ada regresi.
 Cold start masih ~5,4 s karena didominasi startup Electron, bukan renderer.
-
