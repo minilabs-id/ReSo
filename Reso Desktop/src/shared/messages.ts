@@ -51,7 +51,7 @@ export function doneMessage(
       return 'Tidak ada nama. Buka permalink post, buka list komentar sampai terlihat, tunggu 2–3 dtk, lalu klik Ambil nama lagi.'
     if (platform === 'tiktok')
       return 'Tidak ada nama. Pastikan komentar terbuka di video, lalu klik Ambil nama lagi.'
-    return 'Tidak ada username. Pastikan komentar terbuka & sudah login, lalu klik Ambil nama lagi.'
+    return 'Tidak ada username. Buka “View all comments” di postingan, tunggu komentar muncul, lalu klik Ambil nama lagi.'
   }
   if (reason === 'error') {
     const base = extra.trim() || 'Terjadi error saat ekstrak.'

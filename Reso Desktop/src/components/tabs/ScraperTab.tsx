@@ -104,6 +104,7 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
   // Browser internal: posisi WebContentsView mengikuti kotak ini.
   const browserRef = useRef<HTMLDivElement | null>(null);
   const lastBoundsRef = useRef('');
+  const openedRef = useRef(false);
   const [browserUrl, setBrowserUrl] = useState<string>(DEFAULT_URL.tiktok);
   const [browserError, setBrowserError] = useState('');
   const [browserLoading, setBrowserLoading] = useState(false);
@@ -154,21 +155,27 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
       const r = el.getBoundingClientRect();
       return { x: r.left, y: r.top, width: r.width, height: r.height };
     };
-    void (async () => {
+    openedRef.current = false;
+    const ensureOpen = async (): Promise<boolean> => {
       const b = bounds();
-      if (!b || cancelled) return;
-      const opened = await openScrapeBrowser(platform, b);
-      if (cancelled) return;
-      if (!opened) {
-        // Layout belum siap (bounds terlalu kecil) — coba sekali lagi setelah
-        // frame berikutnya, bukan diam-diam melanjutkan dengan view tertutup.
-        await new Promise((r) => requestAnimationFrame(r));
-        if (cancelled || !(await openScrapeBrowser(platform, bounds() ?? b))) {
-          if (!cancelled) setBrowserError('Browser internal gagal dibuka — coba ganti platform.');
-          return;
-        }
+      if (!b || b.width < 120 || b.height < 120) return false;
+      const ok = await openScrapeBrowser(platform, b);
+      if (ok) {
+        openedRef.current = true;
+        lastBoundsRef.current = '';
       }
-      lastBoundsRef.current = '';
+      return ok;
+    };
+    void (async () => {
+      let opened = await ensureOpen();
+      if (!opened && !cancelled) {
+        await new Promise((r) => requestAnimationFrame(r));
+        opened = await ensureOpen();
+      }
+      if (!opened || cancelled) {
+        if (!cancelled) setBrowserError('Browser internal gagal dibuka — coba ganti platform.');
+        return;
+      }
       // Pulihkan halaman yang sedang terbuka di host. Bila host belum punya
       // halaman, pakai halaman awal yang disimpan operator (profil/postingan
       // sendiri), baru jatuh ke homepage platform.
@@ -183,7 +190,6 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
         }
         await navigateScrapeBrowser(platform, target);
       }
-      if (!shouldKeep) await navigateScrapeBrowser(platform, target);
       if (cancelled) return;
       setBrowserUrl(target);
       setBrowserError('');
@@ -217,11 +223,18 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
+    // Layout bisa berubah setelah module lazy selesai — buka ulang bila view
+    // belum pernah berhasil dipasang.
+    const ro = new ResizeObserver(() => {
+      if (!openedRef.current) void ensureOpen();
+    });
+    if (browserRef.current) ro.observe(browserRef.current);
     window.addEventListener('scroll', sync, true);
     window.addEventListener('resize', sync);
 
     return () => {
       cancelled = true;
+      ro.disconnect();
       cancelAnimationFrame(raf);
       window.removeEventListener('scroll', sync, true);
       window.removeEventListener('resize', sync);

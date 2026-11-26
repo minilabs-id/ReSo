@@ -50,7 +50,9 @@ export function plausibleScrapeTarget(url: string | null | undefined, platform: 
         p.includes('/story.php')
       )
     }
-    if (platform === 'instagram') return ['/p/', '/reel/', '/tv/'].some((seg) => p.includes(seg))
+    if (platform === 'instagram') {
+      return ['/p/', '/reel/', '/reels/', '/tv/'].some((seg) => p.includes(seg))
+    }
     return /\/(video|photo)\//.test(p)
   } catch {
     return false

@@ -41,7 +41,7 @@ const ZERO_NAMES_DETAIL = 'Komentar belum terbuka / belum login.'
  * kegagalan diabaikan pemanggil (post memang mungkin sudah terbuka).
  */
 const OPEN_COMMENTS_JS = `(() => {
-  const re = /^(view (all )?(\\d+ )?comments?|lihat (semua )?(\\d+ )?komentar|show comments?|tampilkan komentar|comments?|komentar|\\d+\\s*comments?)$/i;
+  const re = /^(view all [\\d,]+ comments?|view all comments?|lihat semua [\\d,]+ komentar|show comments?|tampilkan komentar|comments?|komentar|[\\d,\\s]+comments?)$/i;
   // Instagram & TikTok memakai <div role="button"> / div biasa untuk tombol
   // "Comment(s)" — selector lama hanya button/a sehingga panel tak pernah open.
   const nodes = Array.from(document.querySelectorAll('button, [role="button"], a, div, [aria-label], [data-e2e]'));
@@ -54,6 +54,59 @@ const OPEN_COMMENTS_JS = `(() => {
   }
   return false;
 })()`
+
+/**
+ * Instagram mengabaikan `element.click()` dari executeJavaScript — panel komentar
+ * hanya terbuka dengan klik trusted. Cari tautan "View all N comments" / ikon
+ * Comment, lalu kirim mouse event lewat pipeline input Electron.
+ */
+async function openInstagramCommentsTrusted(
+  view: WebContentsView,
+  runJs: <T>(script: string) => Promise<T>
+): Promise<boolean> {
+  const wc = view.webContents
+  if (typeof wc.sendInputEvent !== 'function') return false
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await runJs(`(() => {
+      const el = document.querySelector('a[href$="/comments/"]') || document.querySelector('svg[aria-label="Comment"]');
+      if (el) el.scrollIntoView({ block: 'center' });
+    })()`).catch(() => null)
+    await new Promise((r) => setTimeout(r, 400))
+    const box = await runJs<{ x: number; y: number } | null>(`(() => {
+      const el = document.querySelector('a[href$="/comments/"]') || document.querySelector('svg[aria-label="Comment"]');
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      if (r.width < 1 || r.height < 1) return null;
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) };
+    })()`).catch(() => null)
+    if (!box) {
+      await new Promise((r) => setTimeout(r, 500))
+      continue
+    }
+    const vb = view.getBounds()
+    const candidates: Array<[number, number]> = [
+      [box.x, box.y],
+      [box.x + vb.x, box.y + vb.y],
+      [box.x + vb.x, box.y],
+      [box.x, box.y + vb.y],
+    ]
+    for (const [x, y] of candidates) {
+      try {
+        wc.sendInputEvent({ type: 'mouseMove', x, y })
+        wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 })
+        wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 })
+      } catch {
+        continue
+      }
+      await new Promise((r) => setTimeout(r, 1200))
+      const opened = await runJs<boolean>(
+        `document.querySelectorAll('a[href*="/c/"], [data-e2e="comment-username-1"]').length > 0`
+      ).catch(() => false)
+      if (opened) return true
+    }
+  }
+  return false
+}
 
 /**
  * Scroll container komentar (paling dalam yang bisa di-scroll) atau window.
@@ -362,6 +415,10 @@ export async function runSocialCapture(
       await runJs(OPEN_COMMENTS_JS)
     } catch {
       /* abaikan — post mungkin sudah terbuka */
+    }
+    // Instagram butuh klik trusted; klik programatik di atas sering diabaikan.
+    if (usePlatform === 'instagram') {
+      await openInstagramCommentsTrusted(view, runJs)
     }
 
     // Panel komentar IG/FB butuh waktu untuk me-render setelah tombol diklik.
