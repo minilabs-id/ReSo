@@ -17,7 +17,7 @@ export type RunEvent =
   | { type: 'SET_OPTIONS'; includeReplies: boolean }
   | { type: 'SET_TARGET'; hint: string }
   | { type: 'PROGRESS'; runId: string; names: string[] }
-  | { type: 'DONE'; runId: string; reason: StopReason; names?: string[] }
+  | { type: 'DONE'; runId: string; reason: StopReason; names?: string[]; note?: string }
   | { type: 'STOP'; reason?: StopReason }
   | { type: 'FAIL'; runId?: string; message: string }
 
@@ -103,7 +103,7 @@ export function reduce(
       stopReason: event.reason,
       runId: null,
       updatedAt: Date.now(),
-      message: reasonToMessage(event.reason, names.length, platform),
+      message: event.note || reasonToMessage(event.reason, names.length, platform),
     }
     return { state: next, changed: true }
   }
@@ -169,7 +169,8 @@ export function parseRunEvent(v: unknown): RunEvent | null {
     const names = Array.isArray(o['names'])
       ? o['names'].filter((x): x is string => typeof x === 'string').slice(0, MAX_NAMES)
       : undefined
-    return { type: 'DONE', runId: o['runId'], reason, names }
+    const note = typeof o['note'] === 'string' && o['note'] ? o['note'] : undefined
+    return { type: 'DONE', runId: o['runId'], reason, names, ...(note ? { note } : {}) }
   }
   if (type === 'STOP') {
     const reason = typeof o['reason'] === 'string' ? o['reason'] : undefined

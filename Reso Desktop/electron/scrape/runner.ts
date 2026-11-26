@@ -171,7 +171,12 @@ async function execute(
       dispatch({ type: 'FAIL', runId, message: result.detail || 'Gagal mengambil komentar.' })
       return
     }
-    dispatch({ type: 'DONE', runId, reason: result.reason })
+    dispatch({
+      type: 'DONE',
+      runId,
+      reason: result.reason,
+      ...(result.zeroComments ? { note: 'Postingan ini tidak punya komentar.' } : {}),
+    })
     return
   }
 

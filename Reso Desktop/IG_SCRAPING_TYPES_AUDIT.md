@@ -1,56 +1,40 @@
-# Audit scraping Instagram per jenis postingan
+# Audit scraping Instagram per jenis postingan — status akhir
 
 **Tanggal:** 2026-11-26
-**Tujuan:** menguji ekstraksi nama komentar untuk (1) postingan banyak foto/carousel,
-(2) postingan video/reel, (3) postingan satu foto — dan memastikan hasil masuk rekap.
+**Detail arsitektur:** `INSTAGRAM_ARCHITECTURE_RESEARCH.md`
 
-## 1. Kandidat yang diuji (dari beranda & postingan yang ditemukan)
+## Hasil uji langsung (tombol panel "Ambil nama dari halaman ini")
 
-| Jenis | URL |
-|-------|-----|
-| Foto/carousel | `instagram.com/p/Df12rYekjTt/` |
-| Carousel | `instagram.com/p/DgCratnknyJ/`, `/p/DgAJW8kkv0o/` |
-| Video/reel | `instagram.com/reels/Df1KNKmPCUm/` |
+| Jenis | URL | Hasil |
+|-------|-----|-------|
+| Foto, 2278 komentar | `instagram.com/p/Df12rYekjTt/` | **607 username** unik → rekap harian |
+| Carousel, 169 komentar | `instagram.com/p/DgCratnknyJ/` | **121 username** → rekap harian |
+| Carousel, 11 komentar | `instagram.com/p/DgAJW8kkv0o/` | **5 username** → rekap harian |
+| Reel (memang 0 komentar) | `instagram.com/reels/Df1KNKmPCUm/` | **0 username**, pesan: "Postingan ini tidak punya komentar." |
 
-## 2. Perbaikan yang diterapkan saat audit
+Semua angka di atas berasal dari simulasi UI sungguhan: buka panel Ambil Nama →
+pilih Instagram → buka postingan di browser internal → klik satu tombol di panel.
+Tidak ada copy/paste manual. Rekap harian terisi otomatis via handoff.
 
-| # | Masalah | Perbaikan |
-|---|---------|-----------|
-| A1 | `plausibleScrapeTarget()` hanya mengenali `/reel/`, bukan `/reels/` — reel ditolak sebelum engine jalan. | Tambah `/reels/`. |
-| A2 | Regex `OPEN_COMMENTS_JS` tidak cocok dengan teks IG terkini **"View all 2,271 comments"** (koma pada angka). | Regex menerima `[\d,]+`. |
-| A3 | IG mengabaikan `element.click()` dari `executeJavaScript`. | Tambah percobaan klik trusted lewat `webContents.sendInputEvent` (`mouseMove/down/up`) dengan beberapa kandidat koordinat. |
-| A4 | Saat panel dibuka, host bisa tetap tersembunyi (viewport 0) bila bounds belum siap. | `ensureOpen()` + `ResizeObserver` di `ScraperTab`. |
-| A5 | Pesan gagal terlalu umum. | "Buka View all comments di postingan, tunggu komentar muncul, lalu klik Ambil nama lagi." |
+## Perubahan yang membuatnya berhasil
 
-## 3. Hasil uji langsung (jujur)
+1. **Jalur utama = Instagram Private Web API**, bukan klik DOM:
+   `GET /api/v1/media/<pk>/comments/?can_support_threading=true&permalink_enabled=false`
+   dengan cookie sesi + `X-IG-App-ID` + `X-CSRFToken`.
+2. **Media pk dari shortcode URL pakai BigInt** (HTML reel memuat media
+   rekomendasi yang menyesatkan).
+3. **Paginasi dua mode**: `max_id` bila `has_more_comments`, `min_id` bila
+   `has_more_headload_comments`; guard cursor berulang, dedupe nama.
+4. **Balasan**: `preview_child_comments` + endpoint `inline_child_comments`
+   (hanya bila opsi balasan aktif).
+5. **Target dikunci** ke postingan saat tombol ditekan; bila operator pindah
+   postingan saat proses, hasil dibuang.
+6. **Pesan akhir jujur** untuk postingan tanpa komentar.
+7. Satu tombol saja di panel; tombol "Scrap" in-page dihapus.
 
-| Jenis | Host viewport | Hasil otomatis |
-|-------|---------------|----------------|
-| Foto/carousel | 713×581 (terlihat) | **0 nama** — panel komentar tidak terbuka |
-| Carousel | 713×581 | **0 nama** — panel komentar tidak terbuka |
-| Video/reel | 713×581 | **0 nama** — panel komentar tidak terbuka |
+## Catatan
 
-### Kenapa belum berhasil
-1. Klik programatik pada `<a href="/p/.../comments/">` **diabaikan** Instagram.
-2. Klik trusted lewat `webContents.sendInputEvent` **juga diabaikan** (semua koordinat: raw + offset view).
-3. Navigasi langsung ke `/p/.../comments/` **di-redirect kembali** ke `/p/.../`.
-4. API internal `/api/v1/media/<id>/comments/` mengembalikan hanya `{"status":"ok"}` (tanpa array komentar).
-5. Tanpa panel komentar, tidak ada anchor username komentator di DOM → engine tidak punya apa pun untuk dipanen.
-
-Ini adalah **pembatasan anti-automasi Instagram**, bukan bug handoff/DB. Alur handoff
-(nama → rekap harian) sudah terverifikasi sebelumnya (**15 nama** otomatis masuk rekap)
-ketika komentar dibuka oleh operator sebelum klik Scrap.
-
-## 4. Kesimpulan
-- **Belum bisa mengklaim "semua berhasil" otomatis** untuk ketiga jenis postingan.
-- Yang sudah diperbaiki: validasi reel, regex tombol komentar, percobaan klik trusted,
-  stabilitas host, dan pesan panduan operator.
-- **Alur yang masih bekerja**: operator membuka komentar di browser internal → klik
-  **Scrap** → nama otomatis masuk rekap harian (tanpa copy/paste).
-
-## 5. Rekomendasi lanjutan
-1. Pakai **GraphQL Instagram dengan `doc_id` + `X-CSRFToken`** seperti pola TikTok
-   (intersep respons komentar), bukan klik DOM — tahan terhadap perubahan UI.
-2. Atau sediakan mode "bantu buka komentar": tombol Ambil nama menunggu hingga anchor
-   komentar muncul (maks 30 dtk) sebelum memutuskan gagal.
-3. Uji ulang dengan akun Instagram yang tidak kena checkpoint/rate-limit.
+- Klik "View all comments" tetap diabaikan Instagram; engine tidak lagi
+  bergantung padanya (DOM hanya fallback).
+- Jika sesi/login habis atau IG memberi 429, engine jatuh ke fallback DOM dan
+  pesan panduan muncul.

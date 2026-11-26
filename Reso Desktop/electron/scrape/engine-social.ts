@@ -12,7 +12,8 @@
 
 import type { WebContentsView } from 'electron'
 import { mergeNames } from '../../src/shared/normalize'
-import { shouldIncludeCandidate } from './engine-social-logic'
+import { isPlausibleHandle, shouldIncludeCandidate } from './engine-social-logic'
+import { buildInstagramApiHarvestScript, type InstagramApiHarvestResult } from './instagram-api'
 
 // ===================== Tipe publik =====================
 
@@ -30,6 +31,8 @@ export interface SocialCaptureResult {
   names: string[]
   reason: 'complete' | 'incomplete' | 'stopped' | 'error' | 'timeout'
   detail?: string
+  /** Postingan memang tidak punya komentar (bukan kegagalan scraping). */
+  zeroComments?: boolean
 }
 
 type SocialPlatform = 'facebook' | 'instagram'
@@ -350,6 +353,7 @@ export async function runSocialCapture(
   const signal = options.signal
   const deadline = Date.now() + Math.max(0, options.timeoutMs)
   const usePlatform: SocialPlatform = platform === 'instagram' ? 'instagram' : 'facebook'
+  let zeroComments = false
 
   /**
    * Setiap executeJavaScript dibatasi sisa deadline & abort. Tanpa ini, halaman
@@ -390,7 +394,8 @@ export async function runSocialCapture(
     if (!merged.length && reason !== 'error' && reason !== 'stopped' && !finalDetail) {
       finalDetail = ZERO_NAMES_DETAIL
     }
-    return finalDetail ? { names: merged, reason, detail: finalDetail } : { names: merged, reason }
+    const zero = zeroComments ? { zeroComments: true } : {}
+    return finalDetail ? { names: merged, reason, detail: finalDetail, ...zero } : { names: merged, reason, ...zero }
   }
 
   /** Tambah nama baru (dedupe case-insensitive). Returns jumlah yang baru. */
@@ -419,6 +424,38 @@ export async function runSocialCapture(
       }
     }
     const lockedPath = options.lockUrl ? pathOf(options.lockUrl) : null
+    if (lockedPath && pathOf(wc.getURL()) !== lockedPath) {
+      return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
+    }
+
+    // Instagram: jalur utama = endpoint internal. Tidak bergantung pada tombol
+    // "View all comments" yang sering diabaikan IG. DOM tetap sebagai fallback.
+    if (usePlatform === 'instagram') {
+      try {
+        const api = await runJs<InstagramApiHarvestResult>(
+          buildInstagramApiHarvestScript({
+            maxPages: Math.max(15, options.maxScrollRounds),
+            includeReplies: options.includeReplies,
+          })
+        )
+        if (api && (api.status === 'ok' || api.names.length)) {
+          if (lockedPath && pathOf(wc.getURL()) !== lockedPath) {
+            return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
+          }
+          const valid = [...api.names, ...api.replyNames].filter(isPlausibleHandle)
+          if (valid.length) {
+            addFound(valid)
+            return finish('complete')
+          }
+          if (api.zero) {
+            zeroComments = true
+            return finish('complete', 'Postingan ini tidak punya komentar.')
+          }
+        }
+      } catch {
+        /* API berubah / sesi bermasalah → lanjut ke panen DOM */
+      }
+    }
 
     // Best-effort: buka panel komentar bila belum terbuka.
     try {

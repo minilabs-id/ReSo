@@ -56,6 +56,14 @@ s = run([
 ])
 eq(s.names, [], 'PROGRESS runId beda ditolak')
 eq(reduce('facebook', s, { type: 'DONE', runId: 'r2', reason: 'complete' }).changed, false, 'DONE runId beda ditolak')
+eq(
+  run([
+    { type: 'START', runId: 'r3', includeReplies: false },
+    { type: 'DONE', runId: 'r3', reason: 'complete', note: 'Postingan ini tidak punya komentar.' },
+  ]).message,
+  'Postingan ini tidak punya komentar.',
+  'catatan zero-comment diteruskan ke pesan akhir'
+)
 
 // --- START ganda tidak me-reset run aktif ---
 let st = defaultStateFor('facebook')
