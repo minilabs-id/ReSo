@@ -55,6 +55,14 @@ Cadangan JSON di menu Pengaturan memuat pegawai, rekap, preferensi scraper, dan
 `better-sqlite3` 11.10 memakai prebuild Electron ABI 130; `npm run dist:win`
 menjalankan `npm run rebuild:native` lebih dulu. Tidak butuh Visual Studio.
 
+## Auto-update
+
+Aplikasi hasil build (packaged) otomatis memeriksa rilis terbaru di
+[GitHub Releases](https://github.com/minilabs-id/ReSo/releases) setiap kali
+dibuka (jeda 4 detik agar startup tetap cepat). Bila ada versi baru, update
+diunduh otomatis dan tombol **"pasang sekarang"** muncul di footer sidebar.
+Mode development tidak melakukan pengecekan.
+
 ## Arsitektur
 
 ```
