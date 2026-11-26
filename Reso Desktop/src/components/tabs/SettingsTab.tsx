@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'motion/react';
-import { Download, Upload, RotateCcw } from 'lucide-react';
+import { Copy, Download, Upload, RotateCcw } from 'lucide-react';
 import { Button } from '../ui/button';
 import { ConfirmDialog } from '../ui/confirm-dialog';
 import { toast } from '../../lib/notify';
 import { containerVariants } from '../../shared/motion';
 import {
   exportAll,
+  getErrorLog,
   getSettings,
   updateSettings,
   resetSettings,
@@ -97,6 +98,26 @@ export const SettingsTab: React.FC = () => {
       cancelled = true;
     };
   }, []);
+
+  const handleCopyLog = async () => {
+    const text = await getErrorLog();
+    if (!text.trim()) {
+      toast.info('Belum ada log error');
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success('Log error disalin');
+    } catch {
+      const area = document.createElement('textarea');
+      area.value = text;
+      document.body.appendChild(area);
+      area.select();
+      document.execCommand('copy');
+      area.remove();
+      toast.success('Log error disalin');
+    }
+  };
 
   const handleExport = async () => {
     try {
@@ -251,6 +272,18 @@ export const SettingsTab: React.FC = () => {
               className="sr-only"
             />
           </div>
+        </div>
+
+        <div className="flex items-center justify-between gap-4 py-3 border-b border-slate-100">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Log error</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Tersimpan lokal di reso-error.log · tidak dikirim ke server
+            </p>
+          </div>
+          <Button onClick={() => void handleCopyLog()} size="sm" variant="outline" className="rounded-xl shrink-0">
+            <Copy size={14} /> Salin log
+          </Button>
         </div>
 
         <SectionHeader title="Preferensi scraper" />

@@ -4,7 +4,7 @@ import { createRequire } from 'module'
 // electron-updater adalah paket CommonJS — named import ESM gagal di runtime.
 const nodeRequire = createRequire(import.meta.url)
 const { autoUpdater } = nodeRequire('electron-updater') as typeof import('electron-updater')
-import { appendFileSync } from 'fs'
+import { appendFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
 import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseBrowserBounds } from './ipc/contracts'
@@ -78,16 +78,35 @@ function broadcastDbChanged(): void {
 
 // ===================== Log error lokal (tanpa telemetri jaringan) =====================
 
+const LOG_MAX_BYTES = 1024 * 1024
+const LOG_KEEP = 3
+
+function rotateLog(path: string): void {
+  try {
+    if (!existsSync(path) || statSync(path).size < LOG_MAX_BYTES) return
+    const oldest = `${path}.${LOG_KEEP}`
+    if (existsSync(oldest)) unlinkSync(oldest)
+    for (let i = LOG_KEEP - 1; i >= 1; i--) {
+      const from = i === 1 ? path : `${path}.${i}`
+      if (existsSync(from)) renameSync(from, `${path}.${i + 1}`)
+    }
+  } catch {
+    /* rotasi gagal — log tetap ditulis ke file utama */
+  }
+}
+
+export function getErrorLogPath(): string {
+  return join(app.getPath('userData'), 'reso-error.log')
+}
+
 /** Tulis ke %APPDATA%\reso\reso-error.log — bisa dikirim operator saat melapor. */
 export function logError(scope: string, err: unknown): void {
   try {
+    const path = getErrorLogPath()
+    rotateLog(path)
     const message = err instanceof Error ? `${err.message}\n${err.stack ?? ''}` : String(err)
     const stamp = new Date().toISOString()
-    appendFileSync(
-      join(app.getPath('userData'), 'reso-error.log'),
-      `[${stamp}] [${scope}] ${message.replace(/\n/g, ' | ')}\n`,
-      'utf8'
-    )
+    appendFileSync(path, `[${stamp}] [${scope}] ${message.replace(/\n/g, ' | ')}\n`, 'utf8')
   } catch {
     /* menulis log tidak boleh menghentikan aplikasi */
   }
@@ -356,6 +375,11 @@ function registerIpc(): void {
     broadcastDbChanged()
     return { ok: true as const }
   })
+  safeHandle(IPC.dbGetAllSettings, () => {
+    const out: Record<string, unknown> = {}
+    for (const key of db.listSettingKeys()) out[key] = readSettingValue(key)
+    return out
+  })
   safeHandle(IPC.dbListSettings, () => db.listSettingKeys())
   safeHandle(IPC.dbExportAll, () => {
     // Preferensi yang benar-benar dipakai UI ada di electron-store (settings.json),
@@ -454,6 +478,14 @@ function registerIpc(): void {
     }
     broadcastDbChanged()
     return { ok: true as const }
+  })
+
+  safeHandle(IPC.appGetErrorLog, () => {
+    try {
+      return readFileSync(getErrorLogPath(), 'utf8')
+    } catch {
+      return ''
+    }
   })
 
   // Auto-update: cek manual & pasang versi yang sudah terunduh.

@@ -109,4 +109,17 @@ mengganggu operasi. Fokus perbaikan berikutnya bukan kecepatan mentah, melainkan
 **startup**, **rotasi log**, dan **guard ukuran bundle** agar tetap efisien saat
 fitur bertambah.
 
-Audit ini tidak mengubah kode — hanya pengukuran & rekomendasi.
+## 7. Status perbaikan — SEMUA diterapkan
+
+| # | Perbaikan | Bukti |
+|---|-----------|-------|
+| E1 | Jeda 200 ms dihapus dari `App.tsx`; loading mengikuti `loading` dari `useLocal()`. | ✅ |
+| E2 | Rotasi log: `reso-error.log` > 1 MB → `.1`, `.2`, `.3` (maks 3 file) sebelum append. Tombol **Salin log** di Pengaturan (IPC `appGetErrorLog`). | Uji: `console.error` renderer masuk log & terbaca via IPC ✅ |
+| E3 | `SettingsTab`, `InputModal`, `UnmatchedReview` jadi `React.lazy` dalam satu `Suspense`. | Chunk awal **1.238 → 1.196 KB**; `npm run verify:bundle` OK ✅ |
+| E4 | `getAllSettings()` IPC satu panggilan menggantikan N+1 di shim `local-db`. | ✅ |
+| — | CI guard: `.github/workflows/desktop-ci.yml` diperbarui ke `working-directory: Reso Desktop` + `npm run verify:bundle`. | ✅ |
+| — | `npm run test:e2e` & `npm run verify:bundle` ditambahkan. | E2E 10 checks OK ✅ |
+
+Pengukuran ulang: heap 9,5 MB, 164 node DOM, reload 427 ms — tidak ada regresi.
+Cold start masih ~5,4 s karena didominasi startup Electron, bukan renderer.
+

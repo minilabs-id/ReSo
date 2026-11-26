@@ -29,17 +29,20 @@ import { useReportExports } from '../features/reports/useReportExports';
 import { useReportState } from '../features/reports/useReportState';
 
 import { DashboardTab } from './tabs/DashboardTab';
-import { InputModal } from './InputModal';
-import { SettingsTab } from './tabs/SettingsTab';
 import ScraperTab from './tabs/ScraperTab';
 import { DailyReportView } from './reports/DailyReportView';
 import { WeeklyReportView } from './reports/WeeklyReportView';
 import { MonthlyReportView } from './reports/MonthlyReportView';
 import { ConfirmDialog } from './ui/confirm-dialog';
-import { UnmatchedReview } from '../features/rekap/UnmatchedReview';
 import { CalendarPanel } from '../features/rekap/CalendarPanel';
 import { useRekapReview } from '../features/rekap/useRekapReview';
 const EmployeeManager = React.lazy(() => import('./EmployeeManager'));
+// Komponen yang tidak selalu dipakai dipecah ke chunk terpisah agar chunk awal kecil.
+const InputModal = React.lazy(() => import('./InputModal').then((m) => ({ default: m.InputModal })));
+const SettingsTab = React.lazy(() => import('./tabs/SettingsTab').then((m) => ({ default: m.SettingsTab })));
+const UnmatchedReview = React.lazy(() =>
+  import('../features/rekap/UnmatchedReview').then((m) => ({ default: m.UnmatchedReview }))
+);
 
 // Batas pegawai untuk export gambar — satu lembar gambar, lebih dari ini wajib PDF/Excel.
 const IMAGE_EXPORT_LIMIT = 60;
@@ -522,6 +525,7 @@ export default function EngagementDashboard() {
                 <p className="text-xs text-slate-500 mt-0.5">Rekapitulasi engagement pegawai per periode</p>
               </div>
             )}
+            <React.Suspense fallback={null}>
             <AnimatePresence mode="wait">
               {activeTab === 'dashboard' && (
                 <DashboardTab 
@@ -672,6 +676,7 @@ export default function EngagementDashboard() {
               <SettingsTab />
             )}
           </AnimatePresence>
+            </React.Suspense>
         </div>
       </div>
     </main>

@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import EngagementDashboard from './components/EngagementDashboard';
 import { useLocal } from './components/LocalProvider';
@@ -65,19 +64,9 @@ function DatabaseUnavailableScreen({ message }: { message: string }) {
 
 export default function App() {
   const { user, loading, error, hasDatabase } = useLocal();
-  const [showLoading, setShowLoading] = useState(true);
 
-  useEffect(() => {
-    if (loading) {
-      setShowLoading(true);
-      return;
-    }
-    // Jeda singkat agar transisi keluar layar loading tidak berkedip.
-    const timer = setTimeout(() => setShowLoading(false), 200);
-    return () => clearTimeout(timer);
-  }, [loading]);
-
-  if (showLoading || loading) {
+  // Tidak ada jeda buatan: LocalProvider hanya butuh satu tick untuk siap.
+  if (loading) {
     return (
       <>
         <NotifyHost />

@@ -98,18 +98,13 @@ async function loadRows(name: CollectionName): Promise<DataRow[]> {
       return ((await b.listEmployees()) ?? []) as unknown as DataRow[]
     }
     if (name === 'settings') {
-      // settings/{id} → tabel key-value; nilai JSON disebar jadi field.
-      const keys = (await b.listSettings?.()) ?? []
-      const rows: DataRow[] = []
-      for (const key of keys) {
-        const value = await b.getSetting?.(key)
-        if (value && typeof value === 'object' && !Array.isArray(value)) {
-          rows.push({ ...(value as Record<string, unknown>), id: key })
-        } else {
-          rows.push({ id: key, value })
-        }
-      }
-      return rows
+      // Satu IPC menggantikan N+1 (listSettings + getSetting per key).
+      const all = (await b.getAllSettings?.()) ?? {}
+      return Object.entries(all).map(([key, value]) =>
+        value && typeof value === 'object' && !Array.isArray(value)
+          ? { ...(value as Record<string, unknown>), id: key }
+          : { id: key, value }
+      )
     }
     // Rekap harian: rentang lebar (1970..2999) = seluruh isi tabel.
     return ((await b.listDailyRange('1970-01-01', '2999-12-31')) ?? []) as unknown as DataRow[]

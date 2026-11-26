@@ -39,6 +39,10 @@ const api = {
     },
   },
 
+  app: {
+    getErrorLog: (): Promise<string> => ipcRenderer.invoke(IPC.appGetErrorLog),
+  },
+
   settings: {
     get: (): Promise<ResoSettings> => ipcRenderer.invoke(IPC.settingsGet),
     set: (patch: Partial<ResoSettings>): Promise<ResoSettings> =>
@@ -91,6 +95,8 @@ const api = {
       ipcRenderer.invoke(IPC.dbUpsertDaily, date, patch),
     stats: () => ipcRenderer.invoke(IPC.dbStats),
     batchSave: (ops: unknown) => ipcRenderer.invoke(IPC.dbBatchSave, ops),
+    getAllSettings: (): Promise<Record<string, unknown>> =>
+      ipcRenderer.invoke(IPC.dbGetAllSettings),
     listSettings: (): Promise<string[]> => ipcRenderer.invoke(IPC.dbListSettings),
     getSetting: (key: string): Promise<unknown> => ipcRenderer.invoke(IPC.dbGetSetting, key),
     setSetting: (key: string, value: unknown) =>

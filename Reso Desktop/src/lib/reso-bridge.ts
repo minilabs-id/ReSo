@@ -68,6 +68,7 @@ interface ResoDataBridge {
     payload: { employees: LocalEmployee[]; daily: LocalDaily[] }
   ) => Promise<{ ok: boolean; stats?: LocalDbStats; reason?: string }>
   /** Dokumen pengaturan tunggal (settings/{id}) — pengganti Firestore. */
+  getAllSettings?: () => Promise<Record<string, unknown>>
   listSettings?: () => Promise<string[]>
   getSetting?: (key: string) => Promise<unknown>
   setSetting?: (key: string, value: unknown) => Promise<{ ok: boolean; reason?: string }>
@@ -129,6 +130,7 @@ declare global {
   interface Window {
     reso?: {
       platform: 'electron'
+      app: { getErrorLog: () => Promise<string> }
       browser: ResoScrapeBrowserBridge
       settings: ResoSettingsBridge
       updater: ResoUpdateBridge
@@ -384,6 +386,15 @@ export async function checkForUpdates(): Promise<boolean> {
     return await window.reso!.updater.check()
   } catch {
     return false
+  }
+}
+
+export async function getErrorLog(): Promise<string> {
+  if (!isElectron) return ''
+  try {
+    return await window.reso!.app.getErrorLog()
+  } catch {
+    return ''
   }
 }
 

@@ -108,6 +108,7 @@ Detail audit arsitektur: [`ARCHITECTURE_ALIGNMENT_AUDIT.md`](./ARCHITECTURE_ALIG
 | `npm run test:stress` | Stress test matching (dijalankan terpisah) |
 | `npm run test:e2e` | Smoke test UI via CDP (app harus jalan di port 9223) |
 | `npm run verify:release` | Validasi artefak rilis lokal |
+| `npm run verify:bundle` | Guard ukuran chunk awal (< 1,3 MB) |
 | `npm run clean` | Hapus `out/` dan `release/` |
 
 ## Checklist rilis
