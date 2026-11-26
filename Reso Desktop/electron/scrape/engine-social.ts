@@ -21,6 +21,8 @@ export interface SocialCaptureOptions {
   maxScrollRounds: number
   scrollDelayMs: number
   timeoutMs: number
+  /** URL postingan saat tombol Scrap ditekan — hasil tidak boleh berpindah. */
+  lockUrl?: string
   signal: { readonly aborted: boolean }
 }
 
@@ -409,6 +411,14 @@ export async function runSocialCapture(
 
   try {
     const wc = view.webContents
+    const pathOf = (u: string): string => {
+      try {
+        return new URL(u).pathname.replace(/\/+$/, '')
+      } catch {
+        return u
+      }
+    }
+    const lockedPath = options.lockUrl ? pathOf(options.lockUrl) : null
 
     // Best-effort: buka panel komentar bila belum terbuka.
     try {
@@ -436,6 +446,10 @@ export async function runSocialCapture(
     for (let round = 0; round < rounds; round++) {
       if (signal.aborted) return finish('stopped')
       if (Date.now() > deadline) return finish(names.length ? 'incomplete' : 'timeout')
+      // Jangan pernah memanen dari postingan lain bila operator scroll saat run.
+      if (lockedPath && pathOf(wc.getURL()) !== lockedPath) {
+        return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
+      }
 
       let found: unknown = []
       try {

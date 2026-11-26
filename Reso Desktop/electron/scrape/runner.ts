@@ -150,6 +150,8 @@ async function execute(
       ...settings,
       includeReplies,
       timeoutMs: settings.captureTimeoutMs,
+      // Kunci ke postingan yang sedang terbuka saat Scrap ditekan.
+      lockUrl: postUrl,
       signal,
     })
 
