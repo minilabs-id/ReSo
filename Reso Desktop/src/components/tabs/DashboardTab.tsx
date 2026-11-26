@@ -97,22 +97,11 @@ export const DashboardTab = ({
       exit={{ opacity: 0 }}
       className="space-y-6"
     >
-      <motion.div variants={itemVariants} className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold tracking-tight text-slate-900">Beranda</h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {dataLoading ? 'Memuat data lokal…' : 'Ringkasan engagement pegawai'}
-          </p>
-        </div>
-        {onGoInput && (
-          <Button
-            onClick={onGoInput}
-            className="gap-2 bg-slate-900 text-white font-bold text-sm px-5"
-          >
-            <ArrowRight size={16} />
-            Input rekap hari ini
-          </Button>
-        )}
+      <motion.div variants={itemVariants}>
+        <h1 className="text-xl font-bold tracking-tight text-slate-900">Beranda</h1>
+        <p className="text-xs text-slate-500 mt-0.5">
+          {dataLoading ? 'Memuat data lokal…' : 'Ringkasan engagement pegawai'}
+        </p>
       </motion.div>
 
       <motion.div className="grid grid-cols-4 gap-3 md:gap-4" variants={itemVariants}>
