@@ -144,6 +144,30 @@ function broadcastNav(platform: Platform, wc: WebContents): void {
 }
 
 /** Event host: siaran navigasi & jaga sesi login. */
+/**
+ * Matikan pemutaran media di host scraper. Dipasang setiap dokumen baru:
+ * autoplay diblokir oleh webPreferences, dan event `play` ditangkap untuk
+ * menghentikan video yang tetap dicoba diputar situs.
+ */
+const FREEZE_MEDIA_JS = `(() => {
+  if (window.__resoMediaFreezeInstalled) return;
+  window.__resoMediaFreezeInstalled = true;
+  const stop = (v) => {
+    try {
+      if (!v || v.tagName !== 'VIDEO') return;
+      v.pause();
+      v.muted = true;
+      v.autoplay = false;
+      v.removeAttribute('autoplay');
+    } catch (e) {}
+  };
+  document.addEventListener('play', (e) => stop(e.target), true);
+  document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('video').forEach(stop);
+  }, true);
+  document.querySelectorAll('video').forEach(stop);
+})()`
+
 function wireHostEvents(platform: Platform, view: WebContentsView): void {
   const wc = view.webContents
 
@@ -154,6 +178,9 @@ function wireHostEvents(platform: Platform, view: WebContentsView): void {
     broadcastNav(platform, wc)
     notifyRenderer(IPC.scrapeBrowserLoading, { platform, loading: false })
   }
+  wc.on('dom-ready', () => {
+    void wc.executeJavaScript(FREEZE_MEDIA_JS).catch(() => {})
+  })
   wc.on('did-finish-load', onSettled)
   wc.on('did-navigate-in-page', onSettled)
   wc.on('did-navigate', () => {
@@ -181,6 +208,8 @@ export function getHost(win: BrowserWindow, platform: Platform): HostHandle {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      // Scraper hanya butuh DOM/teks — video tidak boleh autoplay.
+      autoplayPolicy: 'user-gesture-required',
     },
   })
   view.setBounds({ x: 0, y: 0, width: VIEW_WIDTH, height: VIEW_HEIGHT })
