@@ -57,7 +57,8 @@ for (const [menu, sub, h1] of [
     await ev(`(() => { const b=[...document.querySelectorAll('nav[aria-label="Sub-menu"] button')].find(x=>x.textContent.trim()===${JSON.stringify(sub)}); b?.click(); })()`)
     await sleep(1400)
   } else {
-    await sleep(1100)
+    // Halaman Data memuat chunk lazy pegawai — butuh jeda lebih panjang.
+    await sleep(menu === 'Data' ? 3000 : 1800)
   }
   const heads = await ev(`[...document.querySelectorAll('h1')].map(e=>e.textContent)`)
   check(heads.includes(h1), `halaman ${menu} → ${sub ?? ''}`, JSON.stringify(heads))

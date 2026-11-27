@@ -1,7 +1,23 @@
 # Riset & evaluasi scraping Facebook
 
 **Tanggal:** 2026-11-26
-**Status:** riset selesai, rekomendasi utama **sudah diimplementasi & diuji**.
+**Status:** riset lanjutan selesai; fallback kedua **sudah diimplementasi & diuji**.
+
+## Fallback kedua (riset lanjutan)
+- Endpoint/plugin mobile (`m.facebook.com`, `mbasic.facebook.com/story.php`,
+  `plugins/comments.php`) **tidak bisa diandalkan** pada sesi uji: 400/404 atau
+  HTML tanpa komentar.
+- GraphQL `Depth1CommentsListPaginationQuery` (doc_id `29586448407645556`)
+  ditemukan dari bundle, namun pemanggilannya menolak variabel kita
+  (`noncoercible_variable_value`) dan tidak ada tombol "Lihat komentar" yang
+  memicu query tersebut pada postingan uji — jalur ini belum layak.
+- **Yang berhasil:** fetch HTML postingan dari **main process** lewat
+  `session.fetch` dengan header browser lengkap + cookie partition. HTML awal
+  (~4,1 MB) mengandung 10 `aria-label="Komentar oleh …"`, termasuk nama yang
+  tidak muncul di DOM tervirtualisasi (mis. "Adi Trava"). Parser murni
+  `parseFacebookCommentNames()` membaca label itu langsung dari HTML.
+- Uji akhir: postingan detikcom → 10 nama (termasuk "Adi Trava"); postingan
+  tanpa komentar → 0 nama dengan pesan "Postingan ini tidak punya komentar."
 
 ## Implementasi hasil eksekusi
 - Pemanen FB sekarang memprioritaskan `[role="article"][aria-label]` dengan pola

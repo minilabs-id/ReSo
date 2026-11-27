@@ -13,6 +13,7 @@ import {
   IG_GQL_CAPTURE_JS,
 } from './instagram-graphql'
 import { attachCdp } from './cdp'
+import { parseFacebookCommentNames } from './facebook-html'
 import {
   isPlausibleHandle,
   shouldIncludeCandidate,
@@ -153,5 +154,24 @@ ok(fb.includes('labelName'), 'nama diambil dari aria-label sebelum heuristik lam
 const fbMeta = buildFacebookMetaScript()
 ok(fbMeta.includes('komentar|comments?'), 'meta FB mencari jumlah komentar')
 ok(fbMeta.includes('declared'), 'meta FB mengembalikan jumlah yang diumumkan')
+
+// --- fallback HTML FB (main process) ---
+const fbHtml = [
+  '<div aria-label="Komentar oleh Ferdy Mutant 7 jam yang lalu" role="article"></div>',
+  '<div aria-label="Komentar oleh Pramono\u200c 8 jam yang lalu" role="article"></div>',
+  '<div aria-label="Komentar oleh Ferdy Mutant 9 jam yang lalu" role="article"></div>',
+  '<div aria-label="Balasan oleh Dann 6 jam yang lalu" role="article"></div>',
+  '<div aria-label="Komentar oleh 12345 5 jam yang lalu" role="article"></div>',
+].join('')
+eq(
+  parseFacebookCommentNames(fbHtml, false),
+  ['Ferdy Mutant', 'Pramono'],
+  'parser HTML FB mengambil & mendeduplikasi nama komentar'
+)
+eq(
+  parseFacebookCommentNames(fbHtml, true),
+  ['Ferdy Mutant', 'Pramono', 'Dann'],
+  'parser HTML FB menyertakan balasan saat diminta'
+)
 
 console.log(`engine-social: ${n} checks OK`)

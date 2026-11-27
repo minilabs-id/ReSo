@@ -18,6 +18,7 @@ import {
   buildInstagramGraphqlHarvestScript,
   type InstagramGraphqlHarvestResult,
 } from './instagram-graphql'
+import { fetchFacebookHtmlNames } from './facebook-html'
 
 // ===================== Tipe publik =====================
 
@@ -407,6 +408,7 @@ export async function runSocialCapture(
   const deadline = Date.now() + budgetMs
   let zeroComments = false
   let fbDeclared: number | null = null
+  let fbNoComments = false
 
   /**
    * Setiap executeJavaScript dibatasi sisa deadline & abort. Tanpa ini, halaman
@@ -448,11 +450,16 @@ export async function runSocialCapture(
   ): SocialCaptureResult => {
     const merged = mergeNames([], names, usePlatform)
     let finalDetail = detail
+    if (!merged.length && fbNoComments) {
+      finalDetail = 'Postingan ini tidak punya komentar.'
+      zeroComments = true
+    }
     if (!merged.length && reason !== 'error' && reason !== 'stopped' && !finalDetail) {
       finalDetail = ZERO_NAMES_DETAIL
     }
     // FB: sampaikan apakah hasilnya tuntas bila FB mengumumkan jumlah komentar.
     let finalNote = note
+    if (!finalNote && fbNoComments && !merged.length) finalNote = 'Postingan ini tidak punya komentar.'
     if (!finalNote && usePlatform === 'facebook' && merged.length) {
       finalNote = fbDeclared && fbDeclared > 0
         ? merged.length >= fbDeclared
@@ -576,6 +583,24 @@ export async function runSocialCapture(
         fbDeclared = typeof meta?.declared === 'number' ? meta.declared : null
       } catch {
         /* jumlah komentar tidak tersedia — tetap panen */
+      }
+      // Fallback mandiri: HTML postingan diambil main process dengan cookie sesi.
+      // Tidak bergantung pada DOM/virtualisasi & tidak terkena CORS halaman.
+      if (options.lockUrl) {
+        try {
+          const htmlNames = await fetchFacebookHtmlNames(
+            wc.session,
+            options.lockUrl,
+            options.includeReplies,
+            Math.min(20000, Math.max(5000, deadline - Date.now()))
+          )
+          if (htmlNames !== null) {
+            addFound(htmlNames)
+            if (!htmlNames.length) fbNoComments = true
+          }
+        } catch {
+          /* fallback gagal — DOM tetap dipakai */
+        }
       }
     }
 
