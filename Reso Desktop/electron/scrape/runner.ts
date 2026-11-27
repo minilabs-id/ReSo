@@ -126,9 +126,9 @@ async function execute(
     return
   }
 
-  // URL halaman yang sedang terbuka di browser aplikasi — satu-satunya sumber
-  // target untuk FB/IG, dan sumber utama (di atas template) untuk TikTok.
-  const hostUrl = currentHostUrl(platform)
+  // URL asli WebContentsView adalah sumber kebenaran. URL siaran bisa basi
+  // (misal resolusi profil bawaan yang selesai setelah operator berpindah halaman).
+  const hostUrl = host.view.webContents.getURL() || currentHostUrl(platform)
 
   // ===================== Facebook / Instagram =====================
   if (platform === 'facebook' || platform === 'instagram') {

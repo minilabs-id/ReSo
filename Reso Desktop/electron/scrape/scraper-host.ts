@@ -334,6 +334,12 @@ export async function navigateToOwnProfile(platform: Platform): Promise<string> 
   if (platform === 'facebook') return getHostUrl(platform) || entry
 
   const href = await findOwnHref(wc, platform === 'instagram' ? IG_OWN_JS : TT_OWN_JS, 8000)
+  // Pembaca profil bisa memakan waktu beberapa detik. Kalau operator sudah
+  // berpindah ke postingan/video, jangan timpa navigasinya.
+  const settled = getHostUrl(platform)
+  if (settled && settled !== entry && settled !== entry.replace(/\/$/, '')) {
+    return settled
+  }
   if (href) {
     const absolute = new URL(href, entry).toString()
     if (isAllowedScrapeUrl(absolute, platform)) {
