@@ -29,7 +29,21 @@ const check = (cond, label, detail = '') => {
   console.log(`${cond ? 'OK  ' : 'FAIL'} ${label}${detail ? ` — ${detail}` : ''}`)
   if (!cond) failures++
 }
-const clickNav = (label) => ev(`(() => { const b=[...document.querySelectorAll('nav[aria-label="Menu utama"] button')].find(x=>x.textContent.trim()===${JSON.stringify(label)}); b?.click(); return !!b; })()`)
+const send = (method, params = {}) =>
+  new Promise((r) => {
+    const id = ++seq
+    pending.set(id, r)
+    ws.send(JSON.stringify({ id, method, params }))
+  })
+// Klik trusted lewat CDP Input — React tidak selalu merespons el.click() sintetis.
+const clickNav = async (label) => {
+  const box = await ev(`(() => { const b=[...document.querySelectorAll('nav[aria-label="Menu utama"] button')].find(x=>x.textContent.trim()===${JSON.stringify(label)}); if(!b)return null; b.scrollIntoView({block:'center'}); const r=b.getBoundingClientRect(); return {x:Math.round(r.left+r.width/2),y:Math.round(r.top+r.height/2)} })()`)
+  if (!box) return false
+  await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y })
+  await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', buttons: 1, clickCount: 1 })
+  await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', buttons: 0, clickCount: 1 })
+  return true
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 check(await clickNav('Beranda'), 'menu Beranda tersedia')
@@ -60,7 +74,13 @@ for (const [menu, sub, h1] of [
     // Halaman Data memuat chunk lazy pegawai — butuh jeda lebih panjang.
     await sleep(menu === 'Data' ? 3000 : 1800)
   }
-  const heads = await ev(`[...document.querySelectorAll('h1')].map(e=>e.textContent)`)
+  // Tunggu H1 nyata alih-alih mengandalkan sleep tetap (chunk lazy bisa lambat).
+  let heads = []
+  for (let i = 0; i < 16; i++) {
+    heads = await ev(`[...document.querySelectorAll('h1')].map(e=>e.textContent)`)
+    if (heads.includes(h1)) break
+    await sleep(500)
+  }
   check(heads.includes(h1), `halaman ${menu} → ${sub ?? ''}`, JSON.stringify(heads))
 }
 
