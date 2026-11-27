@@ -585,8 +585,16 @@ export async function runSocialCapture(
         /* jumlah komentar tidak tersedia — tetap panen */
       }
       // Fallback mandiri: HTML postingan diambil main process dengan cookie sesi.
-      // Tidak bergantung pada DOM/virtualisasi & tidak terkena CORS halaman.
-      if (options.lockUrl) {
+      // Hanya dipanggil bila DOM belum memuat komentar — HTML FB bisa ~4 MB.
+      let needHtmlFallback = true
+      try {
+        needHtmlFallback = !(await runJs<boolean>(
+          `!!document.querySelector('[data-commentid], [role="article"][aria-label^="Komentar oleh"], [role="article"][aria-label^="Comment by"]')`
+        ))
+      } catch {
+        needHtmlFallback = true
+      }
+      if (needHtmlFallback && options.lockUrl) {
         try {
           const htmlNames = await fetchFacebookHtmlNames(
             wc.session,

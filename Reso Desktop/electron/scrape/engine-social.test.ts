@@ -151,6 +151,17 @@ ok(fb.includes('[role="article"][aria-label]'), 'FB memakai selector artikel ber
 ok(fb.includes('Komentar'), 'FB mengenali label Komentar oleh')
 ok(fb.includes('Balasan'), 'FB mengenali label Balasan saat includeReplies')
 ok(fb.includes('labelName'), 'nama diambil dari aria-label sebelum heuristik lama')
+ok(fb.includes('data-commentid'), 'FB mempertahankan heuristik lama sebagai fallback')
+
+// --- efisiensi: fallback HTML hanya bila DOM belum punya komentar ---
+const engineSrc = await (await import('node:fs/promises')).readFile(
+  new URL('./engine-social.ts', import.meta.url),
+  'utf8'
+)
+ok(
+  engineSrc.includes('needHtmlFallback'),
+  'fetch HTML 4 MB hanya saat DOM kosong'
+)
 const fbMeta = buildFacebookMetaScript()
 ok(fbMeta.includes('komentar|comments?'), 'meta FB mencari jumlah komentar')
 ok(fbMeta.includes('declared'), 'meta FB mengembalikan jumlah yang diumumkan')

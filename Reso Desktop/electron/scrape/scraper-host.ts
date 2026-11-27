@@ -245,7 +245,19 @@ export function showHost(
 /** Sembunyikan SEMUA host aktif. */
 export function hideHost(): void {
   for (const host of hosts.values()) {
-    if (!host.view.webContents.isDestroyed()) host.view.setVisible(false)
+    if (host.view.webContents.isDestroyed()) continue
+    host.view.setVisible(false)
+    // Halaman tersembunyi tetap hidup (autoplay video/animasi) dan memakan CPU.
+    // Enough untuk dijeda — cookie sesi tetap tersimpan di partition.
+    try {
+      void host.view.webContents
+        .executeJavaScript(
+          `document.querySelectorAll('video').forEach(function(v){try{v.pause()}catch(e){}})`
+        )
+        .catch(() => {})
+    } catch {
+      /* view sedang mati */
+    }
   }
   visiblePlatforms.clear()
 }
