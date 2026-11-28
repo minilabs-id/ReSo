@@ -3,7 +3,7 @@
   "description": "ReSo — Rekap Engagement Sosmed (aplikasi desktop offline)",
   "author": "Diskominfo",
   "private": true,
-  "version": "1.7.1",
+  "version": "1.8.0",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
@@ -17,7 +17,7 @@
     "typecheck:desktop": "tsc --noEmit -p electron/tsconfig.json",
     "test:matching": "tsx src/lib/matching.test.ts",
     "test:stress": "tsx src/lib/extreme-stress.test.ts",
-    "test:shared": "tsx src/shared/index.test.ts && tsx src/shared/run-state.test.ts && tsx electron/store/settings-schema.test.ts && tsx electron/store/state-schema.test.ts && tsx electron/scrape/engine-tiktok-logic.test.ts && tsx electron/scrape/engine-social.test.ts && tsx electron/scrape/engine.test.ts && tsx electron/db/schema.test.ts",
+    "test:shared": "tsx src/shared/index.test.ts && tsx src/shared/run-state.test.ts && tsx electron/store/settings-schema.test.ts && tsx electron/store/state-schema.test.ts && tsx electron/scrape/engine-tiktok-logic.test.ts && tsx electron/scrape/engine-tiktok-api.test.ts && tsx electron/scrape/engine-social.test.ts && tsx electron/scrape/engine.test.ts && tsx electron/db/schema.test.ts",
     "test:local-db": "tsx src/lib/local-db.test.ts",
     "test:date": "tsx src/lib/date.test.ts",
     "test:e2e": "node scripts/e2e-smoke.mjs",

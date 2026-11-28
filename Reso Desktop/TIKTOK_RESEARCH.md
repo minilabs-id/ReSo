@@ -94,5 +94,22 @@ membutuhkan salah satu:
 - URL video TikTok yang komentarnya **benar-benar tampil** di browser internal, atau
 - sesi TikTok yang tidak terkena checkpoint/anti-bot (coba logout-login ulang).
 
+## 8. Perbaikan yang sudah diterapkan
+- `CdpSession.on(method, cb)` — langganan event CDP (`Network.responseReceived`).
+- Jalur **navigation** menyimpan satu sesi CDP untuk seluruh run, lalu:
+  - membaca **body JSON** `/api/comment/list` via `Network.getResponseBody`,
+  - menggabungkan nama dari API (prioritas `user.unique_id`, fallback `nickname`)
+    ke hasil DOM, sehingga tidak dibatasi komentar yang sedang di-render,
+  - berhenti lebih awal bila `has_more: false` pada respons API,
+  - mendorong infinite-scroll dengan `Input.dispatchMouseEvent` `mouseWheel`
+    di atas panel komentar (fallback `scrollTop` tetap dipertahankan),
+  - melepaskan listener & CDP di `finally` (sebelumnya klik CDP bisa bocor).
+- Jalur **template** juga mengambil `unique_id` dari JSON selain `nickname`.
+
+Bukti yang masih kurang: sesi uji sedang dibatasi (0 request API, panel tidak
+memuat komentar), jadi peningkatan ini **belum tervalidasi live**. Ini bukan
+klaim "semua komentar" — TikTok tetap dapat membatasi jumlah halaman yang
+diberikan kepada akun/IP tertentu.
+
 Sampai saat itu, jalur yang terbukti tetap **DOM `[data-e2e="comment-username-*"]`**
 (10 nama pada video uji) dan jalur **template** bila operator punya URL API valid.

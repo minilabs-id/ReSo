@@ -17,6 +17,8 @@ export interface CdpSession {
   isAttached(): boolean
   detach(): Promise<void>
   onDetach(cb: () => void): void
+  /** Langganan event CDP (Network.responseReceived dll); kembalikan unsubscribe. */
+  on(method: string, cb: (params: Record<string, unknown>) => void): () => void
   sendCommand(method: string, params?: object): Promise<unknown>
 }
 
@@ -66,6 +68,17 @@ export async function attachCdp(wc: WebContents, attempts = 3): Promise<CdpSessi
         },
         onDetach: (cb: () => void): void => {
           d.on('detach', cb)
+        },
+        on: (method: string, cb: (params: Record<string, unknown>) => void): (() => void) => {
+          const listener = (
+            _event: unknown,
+            name: string,
+            params: Record<string, unknown>
+          ): void => {
+            if (name === method) cb(params)
+          }
+          d.on('message', listener)
+          return () => d.removeListener('message', listener)
         },
         sendCommand: (method: string, params: object = {}): Promise<unknown> => call(method, params),
       }

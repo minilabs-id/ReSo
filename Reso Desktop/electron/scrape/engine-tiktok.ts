@@ -20,10 +20,45 @@ import {
   type CaptureRequest,
   type CaptureResult,
 } from './engine-tiktok-logic'
-import { attachCdp } from './cdp'
+import { attachCdp, type CdpSession } from './cdp'
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null
+}
+
+/**
+ * Ambil semua username dari satu body JSON `/api/comment/list`.
+ *
+ * Jalur DOM hanya melihat kartu yang sedang di-render (TikTok memakai
+ * virtualization), jadi semua nama dari respons API yang ditangkap CDP
+ * digabungkan di sini. `unique_id` diprioritaskan supaya konsisten dengan
+ * nama yang diharapkan operator; `nickname` dipakai bila tidak tersedia.
+ */
+export function extractTikTokApiNames(data: unknown, includeReplies: boolean): string[] {
+  const out: string[] = []
+  const visited = new Set<unknown>()
+  const walk = (v: unknown, depth = 0): void => {
+    if (!v || depth > 24 || visited.has(v)) return
+    visited.add(v)
+    if (Array.isArray(v)) {
+      for (const item of v) walk(item, depth + 1)
+      return
+    }
+    if (!isRecord(v)) return
+    const user = v['user']
+    if (isRecord(user)) {
+      const unique = user['unique_id']
+      const nick = user['nickname'] ?? user['nickName']
+      const name = typeof unique === 'string' && unique.trim() ? unique : nick
+      if (typeof name === 'string' && name.trim()) out.push(name.trim())
+    }
+    for (const [key, value] of Object.entries(v)) {
+      if (!includeReplies && (key === 'reply_comment' || key === 'reply_comments')) continue
+      walk(value, depth + 1)
+    }
+  }
+  walk(data)
+  return out
 }
 
 interface Intercepted {
@@ -184,7 +219,8 @@ const buildTikTokHarvestScript = (includeReplies: boolean): string => `(() => {
  */
 async function clickCommentsTrusted(
   view: WebContentsView,
-  runJs: <T>(script: string) => Promise<T>
+  runJs: <T>(script: string) => Promise<T>,
+  sharedCdp: CdpSession | null
 ): Promise<string | null> {
   const wc = view.webContents
   // Tanpa pipeline input (mis. test/engine non-Electron) jangan buang waktu.
@@ -216,16 +252,17 @@ async function clickCommentsTrusted(
     if (!box) return null
 
     // Pakai CDP Input dengan koordinat viewport — sudah terbukti membuka panel
-    // komentar TikTok. sendInputEvent memakai koordinat window dan sering meleset.
+    // komentar TikTok. Sesi CDP dipakai bersama seluruh run (jangan di-detach
+    // di sini — penangkap respons API masih membutuhkannya).
     try {
-      const cdp = await attachCdp(wc, 2)
+      const cdp = sharedCdp ?? (await attachCdp(wc, 2))
       await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y, buttons: 0 })
       await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', buttons: 1, clickCount: 1 })
       await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', buttons: 0, clickCount: 1 })
       await new Promise((r) => setTimeout(r, 1500))
       const opened = await runJs(`!!document.querySelector('[data-e2e="comment-username-1"]')`)
       if (opened) return box.label || 'comment-icon'
-      await cdp.detach()
+      if (!sharedCdp) await cdp.detach()
     } catch {
       /* CDP gagal — coba koordinat window sebagai fallback */
     }
@@ -297,6 +334,42 @@ const SCROLL_COMMENT_CONTAINER_JS = `(() => {
   return null;
 })()`
 
+/**
+ * Scroll panel dengan wheel event asli supaya handler infinite-scroll TikTok
+ * ikut berjalan. `scrollTop` saja sering tidak memicu React observer pada
+ * container virtualized, sehingga hanya 10 komentar pertama yang pernah dimuat.
+ */
+async function wheelCommentPanel(
+  cdp: CdpSession | null,
+  runJs: <T>(script: string) => Promise<T>
+): Promise<boolean> {
+  if (!cdp) return false
+  try {
+    const point = await runJs<{ x: number; y: number } | null>(`(() => {
+      const el = document.querySelector('[data-e2e="comment-list"]')
+        || [...document.querySelectorAll('*')].find((e) => {
+          const cls = String(e.className || '') + ' ' + (e.getAttribute('data-e2e') || '');
+          return /comment/i.test(cls) && e.scrollHeight > e.clientHeight + 20 && e.clientHeight > 60;
+        });
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      if (r.width < 20 || r.height < 20) return null;
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + Math.min(r.height / 2, 240)) };
+    })()`)
+    if (!point) return false
+    await cdp.sendCommand('Input.dispatchMouseEvent', {
+      type: 'mouseWheel',
+      x: point.x,
+      y: point.y,
+      deltaX: 0,
+      deltaY: 720,
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function runTikTokCapture(
   view: WebContentsView,
   req: CaptureRequest
@@ -352,6 +425,12 @@ export async function runTikTokCapture(
     return { names: mergeNames([], names, 'tiktok'), mode, reason: finalReason, detail: finalDetail }
   }
 
+  let cdp: CdpSession | null = null
+  const offListeners: Array<() => void> = []
+  const apiNames: string[] = []
+  let apiPages = 0
+  let apiHasMore = true
+
   if (mode === 'template' && req.templateUrl) {
     // Jangan navigasikan WebContentsView ke JSON — itu mengubah target run
     // berikutnya. Ambil lewat session.fetch dengan cookie partition yang sama.
@@ -385,7 +464,10 @@ export async function runTikTokCapture(
           return finish('no_template', `Template untuk video ${got}, bukan ${req.awemeId}`)
         }
       }
-      const parsed = parseTikTokComments(json, req.includeReplies)
+      const parsed = [
+        ...parseTikTokComments(json, req.includeReplies),
+        ...extractTikTokApiNames(json, req.includeReplies),
+      ]
       return { names: mergeNames([], parsed, 'tiktok'), mode, reason: 'complete' }
     } catch (err) {
       return finish('error', err instanceof Error ? err.message : String(err))
@@ -394,6 +476,46 @@ export async function runTikTokCapture(
 
   if (!req.videoUrl) return finish('no_video')
   if (isTikTokLoginWall(req.videoUrl)) return finish('no_login')
+
+  // Satu sesi CDP untuk seluruh run: klik trusted, wheel scroll, dan — yang
+  // terpenting — membaca body JSON /api/comment/list. DOM panel TikTok
+  // tervirtualisasi, jadi mengandalkan kartu yang terlihat saja kehilangan
+  // komentar pada halaman yang sama.
+  try {
+    const session = await attachCdp(wc, 2)
+    cdp = session
+    await session.sendCommand('Network.enable')
+    offListeners.push(
+      session.on('Network.responseReceived', (params) => {
+        const response = params['response']
+        if (!isRecord(response)) return
+        const url = typeof response['url'] === 'string' ? response['url'] : ''
+        if (!/\/api\/comment\/list/.test(url)) return
+        void (async () => {
+          try {
+            const raw = (await session.sendCommand('Network.getResponseBody', {
+              requestId: params['requestId'],
+            })) as { body?: string } | undefined
+            const text = typeof raw?.body === 'string' ? raw.body : ''
+            if (!text.trim()) return
+            let json: unknown = null
+            try { json = JSON.parse(text) } catch { return }
+            const isReply = /\/list\/reply/.test(url)
+            if (!isReply) apiPages++
+            // `has_more` balasan tidak boleh menghentikan pagination komentar utama.
+            if (!isReply && isRecord(json) && 'has_more' in json) {
+              apiHasMore = Boolean(json['has_more'])
+            }
+            for (const name of extractTikTokApiNames(json, req.includeReplies)) apiNames.push(name)
+          } catch {
+            /* body sudah dibebaskan oleh CDP — halaman berikutnya tetap diproses */
+          }
+        })()
+      })
+    )
+  } catch {
+    cdp = null
+  }
 
   const { result: intercepted, detach } = await attachInterceptor(view, req.signal, (status) => {
     if (status > maxStatus) maxStatus = status
@@ -407,7 +529,7 @@ export async function runTikTokCapture(
     if (req.signal.aborted) return finish('stopped')
     // Buka panel komentar. Klik trusted wajib — TikTok mengabaikan klik
     // programatik biasa. Fallback tetap ada bila pipeline input gagal.
-    const opened = await clickCommentsTrusted(view, runJs)
+    const opened = await clickCommentsTrusted(view, runJs, cdp)
     if (!opened) {
       try {
         await runJs(OPEN_COMMENTS_JS)
@@ -456,8 +578,24 @@ export async function runTikTokCapture(
           names.push(name.trim())
         }
       }
+      // Nama dari body API yang ditangkap CDP — tidak dibatasi virtualization.
+      for (const name of apiNames) {
+        if (typeof name !== 'string') continue
+        const key = name.trim().toLowerCase()
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        names.push(name.trim())
+      }
       emptyRounds = names.length === before ? emptyRounds + 1 : 0
 
+      // API mengatakan tidak ada halaman lagi → berhenti lebih awal & tuntas.
+      if (apiPages > 0 && !apiHasMore) {
+        return finish('complete', `${apiPages} halaman API, ${intercepted.urls.length} respons`)
+      }
+
+      // Wheel asli memicu infinite-scroll TikTok; scrollTop tetap sebagai
+      // fallback untuk container yang tidak merespons wheel.
+      await wheelCommentPanel(cdp, runJs)
       try {
         await runJs(SCROLL_COMMENT_CONTAINER_JS)
       } catch {
@@ -466,13 +604,20 @@ export async function runTikTokCapture(
       }
 
       // 3 putaran tanpa tambahan = panel habis (parity idle-grace lama).
-      if (emptyRounds >= 3) return finish('complete', `${intercepted.urls.length} respons API`)
+      if (emptyRounds >= 3) {
+        return finish(
+          'complete',
+          `${apiPages} halaman API, ${intercepted.urls.length} respons API`
+        )
+      }
       await sleep(req.scrollDelayMs, req.signal, deadline)
     }
-    return finish('incomplete', `${intercepted.urls.length} respons API`)
+    return finish('incomplete', `${apiPages} halaman API, ${intercepted.urls.length} respons API`)
   } catch (err) {
     return finish('error', err instanceof Error ? err.message : String(err))
   } finally {
     detach()
+    for (const off of offListeners) off()
+    if (cdp) await cdp.detach().catch(() => {})
   }
 }
