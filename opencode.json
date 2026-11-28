@@ -1,0 +1,19 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "timeout": {
+      "execution": 600000
+    },
+    "servers": {
+      "reso": {
+        "type": "local",
+        "command": ["node", "Reso Desktop/mcp/reso-server.mjs"],
+        "cwd": ".",
+        "protocol": "legacy",
+        "environment": {
+          "RESO_APP_DIR": "Reso Desktop"
+        }
+      }
+    }
+  }
+}

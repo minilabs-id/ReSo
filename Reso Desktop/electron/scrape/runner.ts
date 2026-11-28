@@ -16,7 +16,7 @@
  */
 import type { BrowserWindow, WebContentsView } from 'electron'
 import { getSettings } from '../store/settings-store'
-import { getHost, getHostUrl } from './scraper-host'
+import { getHost, getHostUrl, setHostBusy } from './scraper-host'
 import { runTikTokCapture, sanitizeTikTokTemplateForRun } from './engine-tiktok'
 import { runSocialCapture } from './engine-social'
 import type { CaptureRequest } from './engine-tiktok-logic'
@@ -50,6 +50,7 @@ export function cancelRun(platform: Platform): void {
   const run = active.get(platform)
   if (!run) return
   active.delete(platform)
+  setHostBusy(platform, false)
   try {
     run.abort.abort()
   } catch {
@@ -108,6 +109,8 @@ export function startRun(
     })
 
   const host = mainWindow && !mainWindow.isDestroyed() ? getHost(mainWindow, platform) : null
+  setHostBusy(platform, true)
+  void done.finally(() => setHostBusy(platform, false))
   active.set(platform, { runId, abort, view: host?.view, done })
 }
 

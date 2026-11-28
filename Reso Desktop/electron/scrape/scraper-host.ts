@@ -48,6 +48,10 @@ export interface HostHandle {
   /** Dependency CDP untuk fallback GraphQL IG (status bisa dilihat UI). */
   gqlCapture?: { installed: boolean; scriptId?: string; error?: string }
   cdp?: CdpSession
+  /** Runner menandai host sedang dipakai — jangan di-unload saat scraping. */
+  busy?: boolean
+  /** Timer unload setelah panel ditutup. */
+  idleTimer?: ReturnType<typeof setTimeout>
 }
 
 const hosts = new Map<Platform, HostHandle>()
@@ -281,18 +285,52 @@ export function showHost(
   // tetap menumpuk di atas konten saat operator berpindah menu/platform.
   hideHost()
   const host = getHost(win, platform)
+  cancelIdleUnload(platform, host)
   host.view.setBounds(bounds)
   host.view.setVisible(true)
   visiblePlatforms.add(platform)
 }
 
-/** Sembunyikan SEMUA host aktif. */
+const IDLE_UNLOAD_MS = 3000
+
+function cancelIdleUnload(platform: Platform, host: HostHandle): void {
+  if (host.idleTimer) {
+    clearTimeout(host.idleTimer)
+    host.idleTimer = undefined
+  }
+}
+
+function scheduleIdleUnload(platform: Platform, host: HostHandle): void {
+  cancelIdleUnload(platform, host)
+  host.idleTimer = setTimeout(() => {
+    host.idleTimer = undefined
+    if (host.busy || visiblePlatforms.has(platform)) return
+    const wc = host.view.webContents
+    if (wc.isDestroyed()) return
+    try {
+      // Cookie & localStorage tetap di partition — hanya halaman yang dilepas.
+      void wc.loadURL('about:blank').catch(() => {})
+    } catch {
+      /* view sudah mati */
+    }
+  }, IDLE_UNLOAD_MS)
+}
+
+/** Runner menandai host sedang dipakai agar tidak di-unload di tengah run. */
+export function setHostBusy(platform: Platform, busy: boolean): void {
+  const host = hosts.get(platform)
+  if (!host) return
+  host.busy = busy
+  if (busy) cancelIdleUnload(platform, host)
+  else if (!visiblePlatforms.has(platform)) scheduleIdleUnload(platform, host)
+}
+
+/** Sembunyikan SEMUA host aktif, lalu jadwalkan pelepasan halaman. */
 export function hideHost(): void {
-  for (const host of hosts.values()) {
+  for (const [platform, host] of hosts) {
     if (host.view.webContents.isDestroyed()) continue
     host.view.setVisible(false)
-    // Halaman tersembunyi tetap hidup (autoplay video/animasi) dan memakan CPU.
-    // Enough untuk dijeda — cookie sesi tetap tersimpan di partition.
+    // Jeda dulu agar tidak ada video/animasi berjalan saat grace period.
     try {
       void host.view.webContents
         .executeJavaScript(
@@ -302,6 +340,7 @@ export function hideHost(): void {
     } catch {
       /* view sedang mati */
     }
+    scheduleIdleUnload(platform, host)
   }
   visiblePlatforms.clear()
 }

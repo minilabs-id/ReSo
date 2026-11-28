@@ -48,7 +48,7 @@ export const SETTINGS_DEFAULTS: ResoSettings = {
   tiktokTemplateCapturedAt: 0,
   maxScrollRounds: 15,
   scrollDelayMs: 1200,
-  captureTimeoutMs: 120_000,
+  captureTimeoutMs: 180_000,
 }
 
 /** Batas keras (clamp) — mencegah operator/typo mematikan mesin scraper. */

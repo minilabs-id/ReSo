@@ -26,7 +26,7 @@ const DEFAULT_SCRAPER_SETTINGS: ScraperSettingsForm = {
   tiktokTemplateUrl: '',
   maxScrollRounds: 15,
   scrollDelayMs: 1200,
-  captureTimeoutMs: 120_000,
+  captureTimeoutMs: 180_000,
 };
 
 const NUMERIC_LIMITS = {
