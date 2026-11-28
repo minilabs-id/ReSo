@@ -57,4 +57,5 @@ Setiap skrip/daemon yang diluncurkan untuk uji:
 | `Renderer ReSo tidak ditemukan` | App jalan tanpa CDP | Restart app dengan `--remote-debugging-port=9223` |
 | `ReSo gagal berjalan dengan CDP` | Single-instance lock menolak instance ke-2 | Tutup instance lama dulu |
 | Tool mengembalikan `isError` | Bridge berubah | Cek `electron/preload.ts`, sesuaikan nama method |
+| Tool timeout setelah app di-restart | Koneksi renderer lama | Server MCP sekarang auto-reattach; bila tetap gagal, toggle `disabled` di `opencode.json` lalu aktifkan lagi |
 | Klik platform tidak bereaksi | Panel belum terbuka | Panggil `reso_open` dulu sebelum `reso_navigate` |

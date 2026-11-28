@@ -38,28 +38,54 @@ async function targets() {
   return (await (await fetch(`${BASE}/json/list`)).json())
 }
 
+const REQUEST_TIMEOUT_MS = 30_000
+
 function attach(target) {
-  return new Promise((resolveAttach) => {
+  return new Promise((resolveAttach, rejectAttach) => {
     const ws = new WebSocket(target.webSocketDebuggerUrl)
+    const timer = setTimeout(() => rejectAttach(new Error('CDP attach timeout')), REQUEST_TIMEOUT_MS)
+    ws.onerror = () => {
+      clearTimeout(timer)
+      rejectAttach(new Error('CDP WebSocket error'))
+    }
     ws.onopen = () => {
+      clearTimeout(timer)
       let seq = 0
       const pending = new Map()
       ws.onmessage = (e) => {
         const m = JSON.parse(e.data)
         if (m.id && pending.has(m.id)) {
-          pending.get(m.id)(m.result)
+          const { res, timer: t } = pending.get(m.id)
+          clearTimeout(t)
+          res(m.result)
           pending.delete(m.id)
         }
+      }
+      ws.onclose = () => {
+        for (const { res, timer: t } of pending.values()) {
+          clearTimeout(t)
+          res({ __resoClosed: true })
+        }
+        pending.clear()
       }
       const send = (method, params = {}) =>
         new Promise((res) => {
           const id = ++seq
-          pending.set(id, res)
+          const timer = setTimeout(() => {
+            pending.delete(id)
+            res({ __resoTimedOut: true })
+          }, REQUEST_TIMEOUT_MS)
+          pending.set(id, { res, timer })
           ws.send(JSON.stringify({ id, method, params }))
         })
       const ev = (expression) =>
         send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }).then(
-          (r) => r?.result?.value
+          (r) => {
+            if (r?.__resoClosed || r?.__resoTimedOut) {
+              throw new Error('Koneksi renderer ReSo terputus — ulangi perintah')
+            }
+            return r?.result?.value
+          }
         )
       resolveAttach({ ws, ev, send })
     }
@@ -83,15 +109,21 @@ async function ensureApp() {
 
 async function getRenderer() {
   await ensureApp()
-  if (renderer?.ws?.readyState === WebSocket.OPEN) {
-    const list = await targets()
-    const found = list.find((x) => x.url.includes('out/renderer') || x.url.includes('index.html'))
-    if (!found || found.id !== renderer.id) {
+  let stale = !renderer || renderer.ws.readyState !== WebSocket.OPEN
+  if (!stale) {
+    try {
+      const list = await targets()
+      const found = list.find((x) => x.url.includes('out/renderer') || x.url.includes('index.html'))
+      stale = !found || found.id !== renderer.id
+    } catch {
+      stale = true
+    }
+  }
+  if (stale) {
+    if (renderer) {
       try { renderer.ws.close() } catch {}
       renderer = null
     }
-  }
-  if (!renderer) {
     const list = await targets()
     const target = list.find((x) => x.url.includes('out/renderer') || x.url.includes('index.html'))
     if (!target) throw new Error('Renderer ReSo tidak ditemukan')
