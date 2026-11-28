@@ -401,11 +401,8 @@ export async function runSocialCapture(
   const seen = new Set<string>()
   const signal = options.signal
   const usePlatform: SocialPlatform = platform === 'instagram' ? 'instagram' : 'facebook'
-  // Instagram bisa punya ribuan komentar; batas waktu bawaan terlalu pendek
-  // untuk menuntaskan paginasi. Beri ruang lebih besar hanya pada jalur IG.
-  const budgetMs =
-    usePlatform === 'instagram' ? Math.max(180_000, options.timeoutMs) : Math.max(0, options.timeoutMs)
-  const deadline = Date.now() + budgetMs
+  // Satu-satunya budget adalah pengaturan operator — tidak ada floor tersembunyi.
+  const deadline = Date.now() + Math.max(0, options.timeoutMs)
   let zeroComments = false
   let fbDeclared: number | null = null
   let fbNoComments = false
@@ -450,16 +447,16 @@ export async function runSocialCapture(
   ): SocialCaptureResult => {
     const merged = mergeNames([], names, usePlatform)
     let finalDetail = detail
-    if (!merged.length && fbNoComments) {
-      finalDetail = 'Postingan ini tidak punya komentar.'
-      zeroComments = true
-    }
+    // Diagnosis eksplisit (error/drift/timeout) menang atas klasifikasi otomatis.
+    const noComments = !merged.length && fbNoComments && reason !== 'error' && reason !== 'stopped'
+    if (noComments && !finalDetail) finalDetail = 'Postingan ini tidak punya komentar.'
+    if (noComments && reason === 'complete') zeroComments = true
     if (!merged.length && reason !== 'error' && reason !== 'stopped' && !finalDetail) {
       finalDetail = ZERO_NAMES_DETAIL
     }
     // FB: sampaikan apakah hasilnya tuntas bila FB mengumumkan jumlah komentar.
     let finalNote = note
-    if (!finalNote && fbNoComments && !merged.length) finalNote = 'Postingan ini tidak punya komentar.'
+    if (!finalNote && noComments) finalNote = 'Postingan ini tidak punya komentar.'
     if (!finalNote && usePlatform === 'facebook' && merged.length) {
       finalNote = fbDeclared && fbDeclared > 0
         ? merged.length >= fbDeclared
@@ -492,15 +489,23 @@ export async function runSocialCapture(
 
   try {
     const wc = view.webContents
-    const pathOf = (u: string): string => {
+    try {
+      await wc.executeJavaScript('window.__resoHarvestAbort = false')
+    } catch {
+      /* halaman belum siap */
+    }
+    const targetOf = (u: string): string => {
       try {
-        return new URL(u).pathname.replace(/\/+$/, '')
+        const parsed = new URL(u)
+        return parsed.origin + parsed.pathname.replace(/\/+$/, '')
       } catch {
         return u
       }
     }
-    const lockedPath = options.lockUrl ? pathOf(options.lockUrl) : null
-    if (lockedPath && pathOf(wc.getURL()) !== lockedPath) {
+    const lockedPath = options.lockUrl ? targetOf(options.lockUrl) : null
+    const assertTarget = (): boolean =>
+      !(lockedPath && targetOf(wc.getURL()) !== lockedPath)
+    if (!assertTarget()) {
       return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
     }
 
@@ -554,7 +559,7 @@ export async function runSocialCapture(
         }
       }
 
-      if (lockedPath && pathOf(wc.getURL()) !== lockedPath) {
+      if (!assertTarget()) {
         return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
       }
 
@@ -610,6 +615,9 @@ export async function runSocialCapture(
           /* fallback gagal — DOM tetap dipakai */
         }
       }
+      if (!assertTarget()) {
+        return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
+      }
     }
 
     // Best-effort: buka panel komentar bila belum terbuka.
@@ -624,6 +632,9 @@ export async function runSocialCapture(
     await sleep(Math.min(2000, Math.max(800, options.scrollDelayMs)), signal, deadline)
     if (signal.aborted) return finish('stopped')
     if (Date.now() > deadline) return finish(names.length ? 'incomplete' : 'timeout')
+    if (!assertTarget()) {
+      return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
+    }
 
     const harvest = buildHarvestScript(usePlatform, options.includeReplies)
     const rounds = Math.max(0, Math.floor(options.maxScrollRounds))
@@ -634,7 +645,7 @@ export async function runSocialCapture(
       if (signal.aborted) return finish('stopped')
       if (Date.now() > deadline) return finish(names.length ? 'incomplete' : 'timeout')
       // Jangan pernah memanen dari postingan lain bila operator scroll saat run.
-      if (lockedPath && pathOf(wc.getURL()) !== lockedPath) {
+      if (!assertTarget()) {
         return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
       }
 
@@ -655,6 +666,9 @@ export async function runSocialCapture(
         /* tanpa container → putaran berikutnya panen lagi */
       }
 
+      if (!assertTarget()) {
+        return finish('error', 'Postingan berpindah saat proses — buka postingan yang sama lalu ulangi.')
+      }
       // 3 putaran tanpa nama baru = akhir komentar yang stabil.
       if (emptyRounds >= 3) {
         return finish('complete', names.length ? undefined : ZERO_NAMES_DETAIL)

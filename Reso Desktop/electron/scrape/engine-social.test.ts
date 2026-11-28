@@ -97,6 +97,8 @@ ok(apiIg.includes('preview_child_comments'), 'mengambil balasan dari payload uta
 ok(apiIg.includes('inline_child_comments'), 'endpoint balasan yang benar')
 ok(!apiIg.includes('c.replies'), 'TIDAK memakai field replies yang tidak ada')
 ok(apiIg.includes('MAX_PAGES = 500'), 'paginasi tidak dibatasi putaran scroll')
+ok(!apiIg.includes('if (commentCount === 0) complete = true'), 'comment_count=0 tidak membuang halaman pertama')
+ok(apiIg.includes('rawCount === 0 && names.length === 0'), 'zero hanya bila tidak ada komentar sama sekali')
 ok(apiIg.includes('res.status === 429'), 'retry otomatis saat IG memberi 429')
 ok(apiIg.includes('rawCount >= commentCount'), 'berhenti setelah semua komentar terbaca')
 ok(apiIg.includes('complete'), 'status tuntas dilaporkan ke engine')

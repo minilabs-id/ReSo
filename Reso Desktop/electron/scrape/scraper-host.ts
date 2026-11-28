@@ -25,7 +25,7 @@ import {
   tiktokOwnHrefFromHtml,
 } from '../../src/shared/own-profile'
 import { IG_GQL_CAPTURE_JS } from './instagram-graphql'
-import { attachCdp } from './cdp'
+import { attachCdp, type CdpSession } from './cdp'
 
 /** Ukuran awal view tersembunyi — halaman butuh viewport wajar agar lazy-load jalan. */
 const VIEW_WIDTH = 1280
@@ -47,6 +47,7 @@ export interface HostHandle {
   ses: Session
   /** Dependency CDP untuk fallback GraphQL IG (status bisa dilihat UI). */
   gqlCapture?: { installed: boolean; scriptId?: string; error?: string }
+  cdp?: CdpSession
 }
 
 const hosts = new Map<Platform, HostHandle>()
@@ -234,9 +235,23 @@ async function installInstagramGqlCapture(handle: HostHandle): Promise<void> {
   try {
     const cdp = await attachCdp(handle.view.webContents)
     const scriptId = await cdp.addDocumentStartScript(IG_GQL_CAPTURE_JS)
+    handle.cdp = cdp
+    cdp.onDetach(() => {
+      handle.gqlCapture = { installed: false, error: 'debugger terlepas' }
+      handle.cdp = undefined
+    })
     handle.gqlCapture = { installed: true, scriptId }
   } catch (err) {
     handle.gqlCapture = { installed: false, error: String(err).slice(0, 180) }
+  }
+}
+
+/** Lepas semua debugger CDP sebelum proses keluar. */
+export async function detachAllCdp(): Promise<void> {
+  for (const host of hosts.values()) {
+    if (!host.cdp) continue
+    await host.cdp.detach()
+    host.cdp = undefined
   }
 }
 

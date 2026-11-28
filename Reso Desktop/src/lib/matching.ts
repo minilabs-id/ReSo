@@ -3,6 +3,8 @@
  * Matches raw paste text (names/usernames) to employees per platform.
  */
 
+import type { UnmatchedName } from '../shared/types'
+
 export type EngagementPlatform = 'ig' | 'fb' | 'tiktok';
 
 export interface MatchableEmployee {
@@ -199,6 +201,23 @@ export function engagedIdsEqual(a: string[] = [], b: string[] = []): boolean {
   const sa = [...a].sort();
   const sb = [...b].sort();
   return sa.every((id, i) => id === sb[i]);
+}
+
+/** Gabungkan antrean unmatched lintas platform tanpa menimpa platform lain. */
+export function mergeUnmatchedByPlatform(
+  previous: UnmatchedName[],
+  current: UnmatchedName[]
+): UnmatchedName[] {
+  const seen = new Set<string>()
+  const out: UnmatchedName[] = []
+  for (const item of [...previous, ...current]) {
+    if (!item || typeof item.name !== 'string' || !item.name) continue
+    const key = `${item.name.toLowerCase()}|${item.platform}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(item)
+  }
+  return out
 }
 
 /** Merge raw lines without duplicates (case-insensitive). */

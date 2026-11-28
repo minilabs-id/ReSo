@@ -111,22 +111,26 @@ export function buildInstagramGraphqlHarvestScript(options: InstagramGraphqlHarv
     }
     const mediaId = pk.toString();
 
-    // 2. doc_id dari bundle JS yang sedang dipakai halaman.
-    const html = document.documentElement.innerHTML;
-    const scripts = [...new Set([...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]))];
-    let docId = '';
-    for (const src of scripts.slice(0, 40)) {
-      try {
-        const txt = await (await fetch(src, { credentials: 'omit' })).text();
-        docId = findDocId(txt);
-        if (docId) break;
-      } catch (e) {}
-    }
-    if (!docId) return empty('no-doc-id');
-
-    // 3. template parameter dari request GraphQL asli halaman.
+    // 2. Template request asli — doc_id diambil dari sana bila tersedia.
     const tpl = window.__resoGqlTemplate;
     if (!tpl || !tpl.body || !tpl.body.includes('doc_id=')) return empty('no-template');
+    let docId = '';
+    const tplDoc = String(tpl.body.match(/doc_id=(\d+)/)?.[1] || '');
+    if (/^\d+$/.test(tplDoc)) docId = tplDoc;
+
+    // Bundle hanya fallback bila template tidak membawa doc_id yang dikenal.
+    if (!docId) {
+      const html = document.documentElement.innerHTML;
+      const scripts = [...new Set([...html.matchAll(/<script[^>]+src="([^"]+)"/g)].map((m) => m[1]))];
+      for (const src of scripts.slice(0, 5)) {
+        try {
+          const txt = await (await fetch(src, { credentials: 'omit' })).text();
+          docId = findDocId(txt);
+          if (docId) break;
+        } catch (e) {}
+      }
+    }
+    if (!docId) return empty('no-doc-id');
 
     const names = [];
     const seenCursor = new Set();
@@ -156,8 +160,9 @@ export function buildInstagramGraphqlHarvestScript(options: InstagramGraphqlHarv
 
     try {
       for (let p = 0; p < MAX_PAGES; p++) {
+        if (window.__resoHarvestAbort === true) break;
         const body = tpl.body
-          .replace(/doc_id=\\d+/, 'doc_id=' + docId)
+          .replace(/doc_id=\d+/, 'doc_id=' + docId)
           .replace(/fb_api_req_friendly_name=[^&]*/, 'fb_api_req_friendly_name=PolarisPostCommentsPaginationQuery')
           .replace(/variables=[^&]*/, 'variables=' + encodeURIComponent(varsOf(after)));
         const headers = { ...(tpl.headers || {}) };
@@ -167,13 +172,27 @@ export function buildInstagramGraphqlHarvestScript(options: InstagramGraphqlHarv
         delete headers['Host'];
         headers['X-FB-Friendly-Name'] = 'PolarisPostCommentsPaginationQuery';
 
-        const res = await fetch('/api/graphql', { method: 'POST', headers, body, credentials: 'include' });
-        if (res.status === 429 || res.status >= 500) {
-          await new Promise((r) => setTimeout(r, 1200 * (p % 3 + 1)));
-          continue;
+        // Retry pada cursor yang SAMA — halaman gagal tidak boleh dilompati.
+        let res = null;
+        let j = null;
+        for (let attempt = 0; attempt < 4; attempt++) {
+          try {
+            if (window.__resoHarvestAbort === true) break;
+            res = await fetch('/api/graphql', { method: 'POST', headers, body, credentials: 'include' });
+            if (res.status === 429 || res.status >= 500) {
+              if (attempt === 3) { status = 'http-' + res.status; break; }
+              await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+              continue;
+            }
+            if (!res.ok) throw new Error('HTTP-' + res.status);
+            j = await res.json();
+            break;
+          } catch (e) {
+            if (attempt === 3) { status = 'error:' + String(e).slice(0, 60); break; }
+            await new Promise((r) => setTimeout(r, 600 * (attempt + 1)));
+          }
         }
-        if (!res.ok) throw new Error('HTTP-' + res.status);
-        const j = await res.json();
+        if (!j) break;
         if (j.errors && j.errors.length) {
           status = 'gql:' + String(j.errors[0].message || '').slice(0, 80);
           break;
@@ -181,7 +200,8 @@ export function buildInstagramGraphqlHarvestScript(options: InstagramGraphqlHarv
         const conn = j.data && j.data.comments_media && j.data.comments_media.comments_connection;
         if (!conn) { status = 'no-connection'; break; }
         const edges = Array.isArray(conn.edges) ? conn.edges : [];
-        if (p === 0) commentCount = Number(conn.count || 0);
+        const reported = Number(conn.count);
+        if (Number.isFinite(reported) && reported > 0) commentCount = reported;
         rawCount += edges.length;
         for (const edge of edges) {
           const node = edge && edge.node;
@@ -193,7 +213,7 @@ export function buildInstagramGraphqlHarvestScript(options: InstagramGraphqlHarv
         }
         pages++;
         const pi = conn.page_info || {};
-        if ((commentCount > 0 && rawCount >= commentCount) || !pi.has_next_page || !pi.end_cursor || seenCursor.has(pi.end_cursor) || !edges.length) {
+        if (!pi.has_next_page || !pi.end_cursor || seenCursor.has(pi.end_cursor) || !edges.length) {
           complete = true;
           break;
         }
@@ -203,6 +223,6 @@ export function buildInstagramGraphqlHarvestScript(options: InstagramGraphqlHarv
     } catch (e) {
       status = 'error:' + String(e).slice(0, 80);
     }
-    return { names, commentCount, rawCount, pages, status, id: mediaId, docId, complete: complete || (status === 'ok' && commentCount === 0) };
+    return { names, commentCount, rawCount, pages, status, id: mediaId, docId, complete };
   })()`
 }

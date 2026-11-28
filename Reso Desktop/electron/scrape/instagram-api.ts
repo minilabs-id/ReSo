@@ -112,8 +112,10 @@ export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptio
       if (typeof u === 'string' && /^[A-Za-z0-9._]{1,30}$/.test(u)) arr.push(u);
     };
     const get = async (url) => {
+      if (window.__resoHarvestAbort === true) throw new Error('aborted');
       for (let attempt = 0; attempt < 4; attempt++) {
         try {
+          if (window.__resoHarvestAbort === true) throw new Error('aborted');
           const res = await fetch(url, { headers: H, credentials: 'include' });
           if (res.status === 429 || res.status >= 500) {
             await new Promise((r) => setTimeout(r, 900 * (attempt + 1)));
@@ -143,11 +145,14 @@ export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptio
       if (j.status && j.status !== 'ok') {
         return { ...empty(String(j.status)), id };
       }
-      commentCount = Number(j.comment_count || 0);
-      if (commentCount === 0) complete = true;
+      const reported = Number(j.comment_count);
+      commentCount = Number.isFinite(reported) && reported > 0 ? reported : 0;
+      // comment_count bisa absen/0 walau array comments berisi — jangan pakai
+      // itu sebagai gate sebelum halaman pertama dipanen.
 
       const used = new Set();
       for (let p = 0; p < MAX_PAGES && !complete; p++) {
+        if (window.__resoHarvestAbort === true) break;
         const list = Array.isArray(j.comments) ? j.comments : [];
         rawCount += list.length;
         for (const c of list) {
@@ -162,15 +167,17 @@ export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptio
         }
         pages++;
 
-        if (commentCount > 0 && rawCount >= commentCount) { complete = true; break; }
-
         // Kontrak resmi IG: prioritaskan max_id (kronologis), lalu min_id (ranked).
         let next = null;
         if (j.has_more_comments && j.next_max_id) next = { k: 'max_id', v: String(j.next_max_id) };
         else if (j.has_more_headload_comments && j.next_min_id) next = { k: 'min_id', v: String(j.next_min_id) };
 
+        // comment_count hanya pengaman sekunder: jangan potong paginasi yang
+        // masih punya cursor hanya karena angkanya sudah terlampaui.
+        if (commentCount > 0 && rawCount >= commentCount && !next) { complete = true; break; }
+
         if (!next || used.has(next.k + ':' + next.v) || !list.length) {
-          if (!next) complete = true;
+          if (!next || !list.length) complete = true;
           else if (used.has(next.k + ':' + next.v)) { exhausted = true; complete = true; }
           break;
         }
@@ -220,9 +227,9 @@ export function buildInstagramApiHarvestScript(options: InstagramApiHarvestOptio
       replyPages,
       status,
       id,
-      zero: status === 'ok' && commentCount === 0 && names.length === 0,
+      zero: status === 'ok' && rawCount === 0 && names.length === 0,
       exhausted,
-      complete: complete || (status === 'ok' && commentCount === 0),
+      complete,
     };
   })()`
 }

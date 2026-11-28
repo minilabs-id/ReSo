@@ -20,6 +20,11 @@ import {
   type CaptureRequest,
   type CaptureResult,
 } from './engine-tiktok-logic'
+import { attachCdp } from './cdp'
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null
+}
 
 interface Intercepted {
   urls: string[]
@@ -27,13 +32,13 @@ interface Intercepted {
   maxStatus: number
 }
 
-function sleep(ms: number, signal: { aborted: boolean }): Promise<void> {
+function sleep(ms: number, signal: { aborted: boolean }, deadline = 0): Promise<void> {
   return new Promise((resolve) => {
     const step = 100
     let waited = 0
     const tick = setInterval(() => {
       waited += step
-      if (signal.aborted || waited >= ms) {
+      if (signal.aborted || (deadline > 0 && Date.now() >= deadline) || waited >= ms) {
         clearInterval(tick)
         resolve()
       }
@@ -116,6 +121,8 @@ export function sanitizeTikTokTemplateForRun(url: unknown, capturedAt = 0): stri
   const clean = sanitizeEngineOptions('SET_TEMPLATE', { templateUrl: url }, 'tiktok').templateUrl
   if (!clean) return null
   if (capturedAt > 0 && Date.now() - capturedAt > TEMPLATE_TTL_MS) return null
+  // Template tanpa aweme_id tidak bisa diikat ke video target.
+  if (!/[?&]aweme_id=\d+/.test(clean)) return null
   return clean
 }
 
@@ -123,7 +130,8 @@ export function sanitizeTikTokTemplateForRun(url: unknown, capturedAt = 0): stri
  * Harvest nama dari DOM panel komentar TikTok yang sedang terbuka.
  * Dipanggil berulang (tiap putaran scroll) — penggabungan dilakukan pemanggil.
  */
-const HARVEST_JS = `(() => {
+const buildTikTokHarvestScript = (includeReplies: boolean): string => `(() => {
+  const INCLUDE_REPLIES = ${includeReplies ? 'true' : 'false'};
   const out = [];
   const seen = new Set();
   const push = (t) => {
@@ -147,9 +155,10 @@ const HARVEST_JS = `(() => {
   //   [data-e2e="comment-username-1"] > a[href^="/@username"]
   // data-e2e="inbox-list" adalah NOTIFIKASI akun (komentar lintas video) —
   // mengambilnya menghasilkan nama yang sama pada video berbeda. Jangan pakai.
-  const authors = document.querySelectorAll(
-    '[data-e2e="comment-username-1"], [data-e2e="comment-username-2"]'
-  );
+  // comment-username-2 adalah level balasan — hanya diambil bila opsi aktif.
+  const authors = document.querySelectorAll(INCLUDE_REPLIES
+    ? '[data-e2e="comment-username-1"], [data-e2e="comment-username-2"]'
+    : '[data-e2e="comment-username-1"]');
   for (const author of authors) {
     const a = author.querySelector('a[href^="/@"]');
     const u = fromHref(a);
@@ -206,26 +215,31 @@ async function clickCommentsTrusted(
     }
     if (!box) return null
 
-    // `sendInputEvent` memakai koordinat window, bukan viewport halaman. Coba
-    // ruang koordinat yang mungkin (terutama offset WebContentsView di sidebar).
-    const vb = view.getBounds()
-    const candidates: Array<[number, number]> = [
-      [box.x + vb.x, box.y + vb.y],
-      [box.x + vb.x, box.y],
-      [box.x, box.y],
-      [box.x, box.y + vb.y],
-    ]
-    for (const [x, y] of candidates) {
-      try {
-        wc.sendInputEvent({ type: 'mouseMove', x, y })
-        wc.sendInputEvent({ type: 'mouseDown', x, y, button: 'left', clickCount: 1 })
-        wc.sendInputEvent({ type: 'mouseUp', x, y, button: 'left', clickCount: 1 })
-        await new Promise((r) => setTimeout(r, 1200))
-        const opened = await runJs(`!!document.querySelector('[data-e2e="comment-username-1"]')`)
-        if (opened) return box.label || 'comment-icon'
-      } catch {
-        /* coba kandidat berikutnya */
+    // Pakai CDP Input dengan koordinat viewport — sudah terbukti membuka panel
+    // komentar TikTok. sendInputEvent memakai koordinat window dan sering meleset.
+    try {
+      const cdp = await attachCdp(wc, 2)
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseMoved', x: box.x, y: box.y, buttons: 0 })
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mousePressed', x: box.x, y: box.y, button: 'left', buttons: 1, clickCount: 1 })
+      await cdp.sendCommand('Input.dispatchMouseEvent', { type: 'mouseReleased', x: box.x, y: box.y, button: 'left', buttons: 0, clickCount: 1 })
+      await new Promise((r) => setTimeout(r, 1500))
+      const opened = await runJs(`!!document.querySelector('[data-e2e="comment-username-1"]')`)
+      if (opened) return box.label || 'comment-icon'
+      await cdp.detach()
+    } catch {
+      /* CDP gagal — coba koordinat window sebagai fallback */
+    }
+    try {
+      const vb = view.getBounds()
+      wc.sendInputEvent({ type: 'mouseMove', x: box.x + vb.x, y: box.y + vb.y })
+      wc.sendInputEvent({ type: 'mouseDown', x: box.x + vb.x, y: box.y + vb.y, button: 'left', clickCount: 1 })
+      wc.sendInputEvent({ type: 'mouseUp', x: box.x + vb.x, y: box.y + vb.y, button: 'left', clickCount: 1 })
+      await new Promise((r) => setTimeout(r, 1200))
+      if (await runJs(`!!document.querySelector('[data-e2e="comment-username-1"]')`)) {
+        return box.label || 'comment-icon'
       }
+    } catch {
+      /* klik gagal */
     }
     return null
   } catch {
@@ -339,44 +353,42 @@ export async function runTikTokCapture(
   }
 
   if (mode === 'template' && req.templateUrl) {
-    // Jangan pernah navigasi ke URL yang gagal divalidasi (host/endpoint asing).
+    // Jangan navigasikan WebContentsView ke JSON — itu mengubah target run
+    // berikutnya. Ambil lewat session.fetch dengan cookie partition yang sama.
     const safeUrl = sanitizeTikTokTemplateForRun(req.templateUrl, req.templateCapturedAt ?? 0)
-    if (!safeUrl) return finish('no_template', 'template URL tidak valid')
+    if (!safeUrl) return finish('no_template', 'template URL tidak valid / aweme_id tidak ditemukan')
     if (req.signal.aborted) return finish('stopped')
-    // Pantau status respons template (/api/comment/list) lewat sink bersama.
-    const statusSinks = ensureInterceptor(wc.session)
-    const statusSink: UrlSink = (_url, status) => {
-      if (status > maxStatus) maxStatus = status
-    }
-    statusSinks.add(statusSink)
     try {
-      // WebContents.loadURL tidak mengembalikan status HTTP; kegagalan load
-      // melempar error dan ditangkap di blok catch di bawah.
-      await wc.loadURL(safeUrl)
-      if (req.signal.aborted) return finish('stopped')
-      const body = await runJs<string>('document.body ? document.body.innerText : ""')
-      if (typeof body !== 'string' || !body.trim()) return finish('no_template', 'body kosong')
+      const res = await wc.session.fetch(safeUrl, {
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      })
+      maxStatus = res.status
+      if (res.status === 429) return finish('rate_limit', 'TikTok membatasi permintaan (429).')
+      if (res.status === 403) return finish('blocked', 'Akses komentar ditolak TikTok (403).')
+      if (!res.ok) return finish('error', 'HTTP-' + res.status)
+      const body = await res.text()
+      if (!body.trim()) return finish('no_template', 'body kosong')
       let json: unknown = null
       try {
         json = JSON.parse(body)
       } catch {
-        // Beberapa respons dibungkus <pre>; coba ambil teks mentah.
         const m = body.match(/\{[\s\S]*\}/)
         if (m) {
-          try {
-            json = JSON.parse(m[0])
-          } catch {
-            json = null
-          }
+          try { json = JSON.parse(m[0]) } catch { json = null }
         }
       }
       if (!json) return finish('no_template', 'bukan JSON')
+      if (req.awemeId && isRecord(json)) {
+        const got = String(json['aweme_id'] ?? json['item_id'] ?? '')
+        if (got && got !== req.awemeId) {
+          return finish('no_template', `Template untuk video ${got}, bukan ${req.awemeId}`)
+        }
+      }
       const parsed = parseTikTokComments(json, req.includeReplies)
       return { names: mergeNames([], parsed, 'tiktok'), mode, reason: 'complete' }
     } catch (err) {
       return finish('error', err instanceof Error ? err.message : String(err))
-    } finally {
-      statusSinks.delete(statusSink)
     }
   }
 
@@ -391,7 +403,7 @@ export async function runTikTokCapture(
     if (req.signal.aborted) return finish('stopped')
     if (isTikTokLoginWall(wc.getURL())) return finish('no_login')
 
-    await sleep(Math.max(2000, Math.min(4000, req.scrollDelayMs * 2)), req.signal)
+    await sleep(Math.max(2000, Math.min(4000, req.scrollDelayMs * 2)), req.signal, deadline)
     if (req.signal.aborted) return finish('stopped')
     // Buka panel komentar. Klik trusted wajib — TikTok mengabaikan klik
     // programatik biasa. Fallback tetap ada bila pipeline input gagal.
@@ -413,7 +425,7 @@ export async function runTikTokCapture(
           `!!document.querySelector('[data-e2e="comment-username-1"], [data-e2e="comment-username-2"]')`
         ).catch(() => false)
         if (ready) break
-        await sleep(400, req.signal)
+        await sleep(400, req.signal, deadline)
       }
     }
 
@@ -428,7 +440,7 @@ export async function runTikTokCapture(
 
       let found: string[] = []
       try {
-        found = await runJs<string[]>(HARVEST_JS)
+        found = await runJs<string[]>(buildTikTokHarvestScript(req.includeReplies))
       } catch {
         if (req.signal.aborted) return finish('stopped')
         if (Date.now() >= deadline) return finish(names.length ? 'incomplete' : 'timeout')
@@ -455,7 +467,7 @@ export async function runTikTokCapture(
 
       // 3 putaran tanpa tambahan = panel habis (parity idle-grace lama).
       if (emptyRounds >= 3) return finish('complete', `${intercepted.urls.length} respons API`)
-      await sleep(req.scrollDelayMs, req.signal)
+      await sleep(req.scrollDelayMs, req.signal, deadline)
     }
     return finish('incomplete', `${intercepted.urls.length} respons API`)
   } catch (err) {

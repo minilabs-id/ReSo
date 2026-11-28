@@ -60,7 +60,7 @@ export function parseTikTokComments(data: unknown, includeReplies: boolean): str
         v['digg_count'] != null)
     if (looksComment) takeUser(v['user'])
     for (const k of Object.keys(v)) {
-      if (!includeReplies && (k === 'reply_comment' || k === 'reply_comments')) continue
+      if (!includeReplies && (k === 'reply_comment' || k === 'reply_comments' || k === 'comments')) continue
       walk(v[k], depth + 1)
     }
   }

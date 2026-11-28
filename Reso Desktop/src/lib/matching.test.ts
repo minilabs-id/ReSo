@@ -6,6 +6,7 @@ import {
   matchEngagementDetail,
   engagedIdsEqual,
   mergeUniqueLines,
+  mergeUnmatchedByPlatform,
 } from './matching';
 
 const employees = [
@@ -277,6 +278,17 @@ assert(
 assert(
   mergeUniqueLines('a\nb', ['B', 'c']) === 'a\nb\nc',
   'mergeUniqueLines case-insensitive dedupe'
+);
+
+// mergeUnmatchedByPlatform — handoff lintas platform tidak saling menimpa
+const mergedUnmatched = mergeUnmatchedByPlatform(
+  [{ name: 'Andi', platform: 'ig' }, { name: 'Budi', platform: 'fb' }],
+  [{ name: 'Andi', platform: 'ig' }, { name: 'Siti', platform: 'tiktok' }]
+);
+assert(mergedUnmatched.length === 3, 'unmatched lintas platform tetap 3 entri');
+assert(
+  mergedUnmatched.map((u) => u.platform).join(',') === 'ig,fb,tiktok',
+  'entri platform lama tidak hilang'
 );
 
 console.log('\nAll matching tests passed.');

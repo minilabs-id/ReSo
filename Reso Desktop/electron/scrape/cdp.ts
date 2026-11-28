@@ -15,6 +15,9 @@ export interface CdpSession {
   evaluate<T>(expression: string): Promise<T>
   addDocumentStartScript(source: string): Promise<string>
   isAttached(): boolean
+  detach(): Promise<void>
+  onDetach(cb: () => void): void
+  sendCommand(method: string, params?: object): Promise<unknown>
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
@@ -36,7 +39,15 @@ export async function attachCdp(wc: WebContents, attempts = 3): Promise<CdpSessi
             expression,
             returnByValue: true,
             awaitPromise: true,
-          })) as { result?: { value?: T } }
+          })) as {
+            result?: { value?: T }
+            exceptionDetails?: { text?: string; exception?: { description?: string } }
+          }
+          if (r.exceptionDetails) {
+            throw new Error(
+              r.exceptionDetails.exception?.description || r.exceptionDetails.text || 'evaluation error'
+            )
+          }
           return r.result?.value as T
         },
         addDocumentStartScript: async (source: string): Promise<string> => {
@@ -46,6 +57,17 @@ export async function attachCdp(wc: WebContents, attempts = 3): Promise<CdpSessi
           return String(r.identifier || '')
         },
         isAttached: (): boolean => d.isAttached(),
+        detach: async (): Promise<void> => {
+          try {
+            if (d.isAttached()) await d.detach()
+          } catch {
+            /* sudah terlepas */
+          }
+        },
+        onDetach: (cb: () => void): void => {
+          d.on('detach', cb)
+        },
+        sendCommand: (method: string, params: object = {}): Promise<unknown> => call(method, params),
       }
     } catch (err) {
       lastError = err

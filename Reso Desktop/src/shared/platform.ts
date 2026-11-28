@@ -41,19 +41,14 @@ export function plausibleScrapeTarget(url: string | null | undefined, platform: 
     const u = new URL(url)
     const p = u.pathname.toLowerCase()
     if (p.includes('/login')) return false
+    // Cocok per segmen path — `includes` menerima /profile/p/... dan /login/p/...
     if (platform === 'facebook') {
-      return (
-        p.includes('/posts/') ||
-        p.includes('/permalink') ||
-        p.includes('/reel/') ||
-        p.includes('/photo/') ||
-        p.includes('/story.php')
-      )
+      return /(^|\/)(posts|permalink|reel|photo|story\.php)(\/|$)/.test(p)
     }
     if (platform === 'instagram') {
-      return ['/p/', '/reel/', '/reels/', '/tv/'].some((seg) => p.includes(seg))
+      return /(^|\/)(p|reel|reels|tv)\/[^/]+/.test(p)
     }
-    return /\/(video|photo)\//.test(p)
+    return /(^|\/)(video|photo)\/[^/]+/.test(p)
   } catch {
     return false
   }

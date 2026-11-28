@@ -14,7 +14,7 @@
  * aplikasi (dibaca main lewat `getHostUrl`). Renderer tidak perlu mengirim
  * URL target apa pun.
  */
-import type { BrowserWindow } from 'electron'
+import type { BrowserWindow, WebContentsView } from 'electron'
 import { getSettings } from '../store/settings-store'
 import { getHost, getHostUrl } from './scraper-host'
 import { runTikTokCapture, sanitizeTikTokTemplateForRun } from './engine-tiktok'
@@ -31,6 +31,8 @@ export type ScrapeDispatch = (event: unknown) => void
 interface ActiveRun {
   runId: string
   abort: AbortController
+  /** View place flag abort in-page ikut dibaca oleh loop fetch IG. */
+  view?: WebContentsView
   /** Selesai saat engine run ini benar-benar berhenti (dipakai saat supersede). */
   done: Promise<void>
 }
@@ -52,6 +54,15 @@ export function cancelRun(platform: Platform): void {
     run.abort.abort()
   } catch {
     /* sudah aborted */
+  }
+  // Flag in-page: engine IG punya loop fetch yang tidak bisa dihentikan_only
+  // oleh Promise IPC. Evaluasi terpisah tetap bisa masuk ke dokumen yang sama.
+  try {
+    void run.view?.webContents
+      .executeJavaScript('window.__resoHarvestAbort = true')
+      .catch(() => {})
+  } catch {
+    /* view sudah mati */
   }
 }
 
@@ -96,7 +107,8 @@ export function startRun(
       })
     })
 
-  active.set(platform, { runId, abort, done })
+  const host = mainWindow && !mainWindow.isDestroyed() ? getHost(mainWindow, platform) : null
+  active.set(platform, { runId, abort, view: host?.view, done })
 }
 
 async function execute(
@@ -213,10 +225,15 @@ async function execute(
 
   dispatch({ type: 'SET_TARGET', hint: currentVideoUrl ?? templateUrl ?? '' })
 
+  const awemeId =
+    currentVideoUrl?.match(/\/video\/(\d+)/)?.[1] ??
+    templateUrl?.match(/[?&]aweme_id=(\d+)/)?.[1]
+
   const req: CaptureRequest = {
     templateUrl,
     templateCapturedAt: settings.tiktokTemplateCapturedAt,
     videoUrl: currentVideoUrl,
+    awemeId,
     includeReplies,
     maxScrollRounds: settings.maxScrollRounds,
     scrollDelayMs: settings.scrollDelayMs,

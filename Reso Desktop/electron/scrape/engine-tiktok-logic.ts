@@ -34,6 +34,8 @@ export interface CaptureRequest {
   templateCapturedAt?: number
   /** URL halaman video target (wajib untuk mode navigation, opsional untuk template). */
   videoUrl: string | null
+  /** aweme_id postingan yang menjadi target — mengikat template ke video. */
+  awemeId?: string
   includeReplies: boolean
   maxScrollRounds: number
   scrollDelayMs: number

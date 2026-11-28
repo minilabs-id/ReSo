@@ -12,10 +12,11 @@ import {
   matchEmployeesToEngagement,
   matchEngagementDetail,
   mergeUniqueLines,
+  mergeUnmatchedByPlatform,
 } from '../../src/lib/matching'
-import type { Platform } from '../../src/shared/types'
+import type { Platform, UnmatchedName } from '../../src/shared/types'
 
-type EngagementPlatform = 'ig' | 'fb' | 'tiktok'
+type EngagementPlatform = UnmatchedName['platform']
 
 const RAW_FIELD: Record<Platform, 'igRawText' | 'fbRawText' | 'tiktokRawText'> = {
   facebook: 'fbRawText',
@@ -67,7 +68,16 @@ export function handoffScrapeToRekap(
   const matchPlatform = MATCH_PLATFORM[platform]
   const engagedIds = matchEmployeesToEngagement(mergedRaw, employees, matchPlatform)
   const detail = matchEngagementDetail(mergedRaw, employees, matchPlatform)
-  const unmatchedNames = detail.unmatched.map((name) => ({ name, platform: matchPlatform }))
+  // Jangan timpa antrean review platform lain — gabungkan & dedupe.
+  const previousUnmatched = Array.isArray(existing?.unmatchedNames)
+    ? (existing!.unmatchedNames as Array<{ name?: unknown; platform?: unknown }>).filter(
+        (u) => u && typeof u.name === 'string' && u.platform !== matchPlatform
+      ) as UnmatchedName[]
+    : []
+  const unmatchedNames = mergeUnmatchedByPlatform(
+    previousUnmatched,
+    detail.unmatched.map((name) => ({ name, platform: matchPlatform }))
+  )
 
   db.upsertDaily(date, {
     [field]: mergedRaw,

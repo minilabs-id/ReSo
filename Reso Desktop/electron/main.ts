@@ -11,7 +11,7 @@ import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDail
 import { getSettings, setSettings, resetSettings, restoreSettings } from './store/settings-store'
 import { SCHEMA_VERSION } from './db/schema'
 import { runController, setHandoffErrorLogger, setScrapeMainWindow } from './ipc/run-controller'
-import { getGqlCaptureStatus, getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, navigateToOwnProfile, platformForContents, setHostBounds, showHost } from './scrape/scraper-host'
+import { detachAllCdp, getGqlCaptureStatus, getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, navigateToOwnProfile, platformForContents, setHostBounds, showHost } from './scrape/scraper-host'
 import { isAllowedScrapeUrl } from '../src/shared/platform'
 import type { Platform } from '../src/shared/types'
 import * as db from './db/database'
@@ -572,6 +572,7 @@ app.on('window-all-closed', () => {
 
 // Tutup SQLite rapi (WAL ter-flush) sebelum proses keluar.
 app.on('will-quit', () => {
+  void detachAllCdp()
   try {
     db.closeDb()
   } catch {
