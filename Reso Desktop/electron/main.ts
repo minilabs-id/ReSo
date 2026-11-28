@@ -7,10 +7,10 @@ const { autoUpdater } = nodeRequire('electron-updater') as typeof import('electr
 import { appendFileSync, existsSync, readFileSync, renameSync, statSync, unlinkSync } from 'fs'
 import { join } from 'path'
 import { pathToFileURL } from 'url'
-import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseBrowserBounds } from './ipc/contracts'
+import { IPC, isPlatform, parseEmployee, parseEmployeeList, parseDate, parseDailyPatch, parseSettingKey, parseSettingValue, parseBatchSave, parseBrowserBounds, MAX_DAILY_ROWS } from './ipc/contracts'
 import { getSettings, setSettings, resetSettings, restoreSettings } from './store/settings-store'
 import { SCHEMA_VERSION } from './db/schema'
-import { runController, setScrapeMainWindow } from './ipc/run-controller'
+import { runController, setHandoffErrorLogger, setScrapeMainWindow } from './ipc/run-controller'
 import { getGqlCaptureStatus, getHostUrl, hideHost, hostNavState, isScrapeHostContents, loadHost, navigateHost, navigateToOwnProfile, platformForContents, setHostBounds, showHost } from './scrape/scraper-host'
 import { isAllowedScrapeUrl } from '../src/shared/platform'
 import type { Platform } from '../src/shared/types'
@@ -389,6 +389,14 @@ function registerIpc(): void {
     if (!Array.isArray(payload.employees) || !Array.isArray(payload.daily)) {
       return { ok: false as const, reason: 'invalid-payload' }
     }
+    if (
+      payload.schemaVersion !== undefined &&
+      (!Number.isInteger(payload.schemaVersion) ||
+        (payload.schemaVersion as number) < 1 ||
+        (payload.schemaVersion as number) > SCHEMA_VERSION)
+    ) {
+      return { ok: false as const, reason: 'unsupported-schema' }
+    }
     const employees = parseEmployeeList(payload.employees)
     // Tolak import daripada membuang entri cacat secara diam-diam.
     if (!employees || employees.length !== payload.employees.length) {
@@ -396,6 +404,9 @@ function registerIpc(): void {
     }
     if (employees.length === 0 && payload.allowEmpty !== true) {
       return { ok: false as const, reason: 'empty-employees' }
+    }
+    if (payload.daily.length > MAX_DAILY_ROWS) {
+      return { ok: false as const, reason: 'too-many-daily' }
     }
     const parsedDaily: Array<{ date: string; patch: ReturnType<typeof parseDailyPatch> }> = []
     for (const row of payload.daily) {
@@ -416,6 +427,9 @@ function registerIpc(): void {
       const parsed = parseSettingValue(value)
       if (!k || !parsed.ok) return { ok: false as const, reason: 'invalid-settings' }
     }
+    // Snapshot untuk rollback lintas dua store (SQLite + settings.json).
+    const snapshot = db.exportAll()
+    const snapshotSettings = getSettings()
     const conn = db.openDb()
     const tx = conn.transaction(() => {
       db.replaceAllEmployees(employees)
@@ -423,13 +437,32 @@ function registerIpc(): void {
       // yang tidak ada di cadangan (kalau tidak, hari basi ikut terbawa).
       db.clearAllDaily()
       for (const row of parsedDaily) db.upsertDaily(row.date, row.patch)
+      // Bersihkan key lama agar keadaan identik dengan berkas cadangan.
+      for (const key of db.listSettingKeys()) db.deleteSetting(key)
       for (const [key, value] of Object.entries(legacySettings)) {
         writeSettingValue(key, value)
       }
     })
-    tx()
-    // Preferensi scraper dipulihkan ke settings.json (bukan tabel SQLite).
-    restoreSettings(payload.settings ?? {})
+    try {
+      tx()
+      // Satu penulisan atomik ke settings.json.
+      restoreSettings(payload.settings ?? {})
+    } catch (err) {
+      // DB sudah ter-commit bila restoreSettings gagal — kembalikan snapshot.
+      try {
+        const rollback = conn.transaction(() => {
+          db.replaceAllEmployees(snapshot.employees)
+          db.clearAllDaily()
+          for (const row of snapshot.daily) db.upsertDaily(row.date, row)
+        })
+        rollback()
+        setSettings(snapshotSettings)
+      } catch (rollbackErr) {
+        logError('restore-rollback', rollbackErr)
+      }
+      logError('restore', err)
+      return { ok: false as const, reason: 'restore-failed' }
+    }
     broadcastDbChanged()
     return { ok: true as const, stats: db.stats() }
   })
@@ -502,22 +535,36 @@ function hardenSession(): void {
   ses.setPermissionCheckHandler(() => false)
 }
 
-app.whenReady().then(() => {
-  hardenSession()
-  registerIpc()
-  createWindow()
-  // Pekerjaan yang tidak terlihat: jendela lebih dulu, baru cleanup DB &
-  // hangatkan preferensi di background.
-  setTimeout(() => {
-    db.deleteSetting('meta_api')
-    getSettings()
-  }, 0)
-  setupAutoUpdater()
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+// Satu instance per userData — dua proses akan menulis DB/store yang sama.
+const gotSingleInstanceLock = app.requestSingleInstanceLock()
+if (!gotSingleInstanceLock) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.focus()
   })
-})
+
+  app.whenReady().then(() => {
+    setHandoffErrorLogger(logError)
+    hardenSession()
+    registerIpc()
+    runController.reconcilePersistedStates()
+    createWindow()
+    // Pekerjaan yang tidak terlihat: jendela lebih dulu, baru cleanup DB &
+    // hangatkan preferensi di background.
+    setTimeout(() => {
+      db.deleteSetting('meta_api')
+      getSettings()
+    }, 0)
+    setupAutoUpdater()
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    })
+  })
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

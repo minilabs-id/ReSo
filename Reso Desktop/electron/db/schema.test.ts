@@ -112,4 +112,12 @@ eq(row['aliases'], '["An"]', 'aliases disimpan sebagai JSON')
 eq(row['nip'], '123', 'nip tersimpan')
 eq(employeeToRow({ id: 'e3', name: 'X', nip: '' }, 'T1')['aliases'], '[]', 'aliases default []')
 
+// --- validator IPC (Gelombang 0) ---
+const { parseDate, parseDailyPatch, MAX_DAILY_ROWS, MAX_RAW_TEXT, MAX_LIST_ITEMS } = await import('../ipc/contracts')
+eq(parseDate('2026-02-30'), null, 'tanggal mustahil ditolak')
+eq(parseDate('2024-02-29'), '2024-02-29', 'tanggal kabisat diterima')
+eq(parseDailyPatch({ igRawText: 'x'.repeat(MAX_RAW_TEXT + 100) }).igRawText?.length, MAX_RAW_TEXT, 'raw text dibatasi')
+eq(parseDailyPatch({ igEngagedEmployeeIds: Array.from({ length: MAX_LIST_ITEMS + 20 }, (_, i) => `e${i}`) }).igEngagedEmployeeIds?.length, MAX_LIST_ITEMS, 'array id dibatasi')
+eq(MAX_DAILY_ROWS > 3000, true, 'batas hari realistis untuk 10 tahun')
+
 console.log(`db-schema: ${n} checks OK`)

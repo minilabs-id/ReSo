@@ -37,11 +37,31 @@ function broadcastHandoff(result: HandoffResult): void {
   }
 }
 
+function broadcastHandoffError(platform: Platform, error: string): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed()) continue
+    win.webContents.send(IPC.scrapeHandoffError, { platform, error })
+  }
+}
+
+type ErrorLogger = (scope: string, err: unknown) => void
+let errorLogger: ErrorLogger = (): void => {}
+
+/** main.ts menyuplai logger lokal agar kegagalan handoff tidak silent. */
+export function setHandoffErrorLogger(fn: ErrorLogger): void {
+  errorLogger = fn
+}
+
 /** Satu tempat penulisan hasil → rekap, dipakai DONE/STOP/FAIL/supersede. */
 function handoff(platform: Platform, names: string[]): void {
   if (!names.length) return
-  const result = handoffScrapeToRekap(platform, names)
-  if (result) broadcastHandoff(result)
+  try {
+    const result = handoffScrapeToRekap(platform, names)
+    if (result) broadcastHandoff(result)
+  } catch (err) {
+    errorLogger('handoff', err)
+    broadcastHandoffError(platform, err instanceof Error ? err.message : String(err))
+  }
 }
 
 export const runController = {
@@ -51,6 +71,27 @@ export const runController = {
 
   getAll(): Record<Platform, NameState> {
     return getAllStates()
+  },
+
+  /**
+   * Startup: state `running` dari file tidak punya engine aktif di proses baru.
+   * Turunkan ke terminal supaya UI tidak nyangkut "Berjalan…" selamanya.
+   */
+  reconcilePersistedStates(): void {
+    for (const platform of ['facebook', 'tiktok', 'instagram'] as const) {
+      const current = getState(platform)
+      if (current.status !== 'running') continue
+      const next: NameState = {
+        ...current,
+        status: 'stopped',
+        stopReason: 'stopped',
+        runId: null,
+        updatedAt: Date.now(),
+        message: 'Run terputus saat aplikasi ditutup.',
+      }
+      setState(platform, next)
+      broadcast(platform, next)
+    }
   },
 
   /** Terapkan event (dari renderer atau runner) → persist → siarkan. */

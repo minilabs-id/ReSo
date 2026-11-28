@@ -462,108 +462,68 @@ export default function EmployeeManager({ employees }: EmployeeManagerProps) {
     setIsUploading(true);
     
     try {
-      // Split into chunks of 500 (Firestore batch limit)
-      const chunks = [];
-      for (let i = 0; i < data.length; i += 500) {
-        chunks.push(data.slice(i, i + 500));
+      // Satu batch atomik — main process membungkusnya dalam SQLite transaction.
+      // Jangan commit per chunk: kegagalan di tengah menyisakan master setengah terimpor.
+      if (data.length > 20000) {
+        toast.error('Terlalu banyak baris (maks 20.000 per impor).');
+        return;
       }
-
-      // Track newly added NIPs in this session to prevent duplicates inside the uploaded file itself
+      const batch = writeBatch(db);
+      const employeesRef = dinasCollection(db, user.uid, 'employees');
       const newlyAddedNips = new Map<string, any>();
+      const uniqueByNip = new Map<string, any>();
+      for (const r of data) {
+        const n = String((r as any).nip || (r as any)['NIP'] || (r as any)['Nomor Induk Pegawai'] || '').trim();
+        uniqueByNip.set(n || `__nonip_${Math.random().toString(36).slice(2)}`, r);
+      }
 
-      for (const chunk of chunks) {
-        const batch = writeBatch(db);
-        const employeesRef = dinasCollection(db, user.uid, 'employees');
-        let chunkCount = 0;
+      for (const row of uniqueByNip.values()) {
+        const name = String(row.name || row['Nama Lengkap'] || row['Nama'] || '').trim();
+        const nip = String(row.nip || row['NIP'] || row['Nomor Induk Pegawai'] || '').trim();
+        const bidang = String(row.bidang || row['Bidang / Unit Kerja'] || row['Bidang'] || row['Unit Kerja'] || '').trim();
+        const igUsername = String(row.igUsername || row['Username Instagram'] || row['Instagram'] || '').trim();
+        const igUsername2 = String(row.igUsername2 || row['Username Instagram 2'] || row['Instagram 2'] || '').trim();
+        const fbName = String(row.fbName || row['Nama Profil Facebook'] || row['Facebook'] || '').trim();
+        const fbName2 = String(row.fbName2 || row['Nama Profil Facebook 2'] || row['Facebook 2'] || '').trim();
+        const tiktokName = String(row.tiktokName || row['Nama Profil TikTok'] || row['TikTok'] || '').trim();
+        const tiktokName2 = String(row.tiktokName2 || row['Nama Profil TikTok 2'] || row['TikTok 2'] || '').trim();
 
-        // Deduplikasi NIP dalam chunk (hindari multiple writes ke doc sama dalam 1 batch)
-        const uniqueByNip = new Map<string, any>();
-        for (const r of chunk) {
-          const n = String((r as any).nip || (r as any)['NIP'] || (r as any)['Nomor Induk Pegawai'] || '').trim();
-          if (n) {
-            uniqueByNip.set(n, r);
+        if (name && nip) {
+          if (!/^\d{18}$/.test(nip)) invalidNipCount++;
+          const optionalFields: Record<string, string> = {};
+          if (bidang) optionalFields.bidang = bidang;
+          if (igUsername) optionalFields.igUsername = igUsername;
+          if (igUsername2) optionalFields.igUsername2 = igUsername2;
+          if (fbName) optionalFields.fbName = fbName;
+          if (fbName2) optionalFields.fbName2 = fbName2;
+          if (tiktokName) optionalFields.tiktokName = tiktokName;
+          if (tiktokName2) optionalFields.tiktokName2 = tiktokName2;
+
+          const existingEmployee = employees.find(emp => emp.nip === nip);
+          if (existingEmployee) {
+            const docRef = dinasDoc(db, user.uid, 'employees', existingEmployee.id);
+            batch.set(docRef, { name, nip, ...optionalFields, updatedAt: serverTimestamp() }, { merge: true });
+            updatedCount++;
+          } else if (newlyAddedNips.has(nip)) {
+            const newDocRef = newlyAddedNips.get(nip);
+            batch.set(newDocRef, { name, nip, ...optionalFields, updatedAt: serverTimestamp() }, { merge: true });
           } else {
-            // Baris tanpa NIP tetap diproses terpisah (akan gagal validasi name&&nip)
-            uniqueByNip.set(`__nonip_${Math.random().toString(36).slice(2)}`, r);
+            const newDocRef = doc(employeesRef);
+            batch.set(newDocRef, {
+              name, nip,
+              bidang: bidang || '', igUsername: igUsername || '', igUsername2: igUsername2 || '',
+              fbName: fbName || '', fbName2: fbName2 || '',
+              tiktokName: tiktokName || '', tiktokName2: tiktokName2 || '',
+              createdAt: serverTimestamp(),
+            });
+            newlyAddedNips.set(nip, newDocRef);
+            newCount++;
           }
-        }
-
-        for (const row of uniqueByNip.values()) {
-          // Map potential column names (Indonesian/English)
-          const name = String(row.name || row['Nama Lengkap'] || row['Nama'] || '').trim();
-          const nip = String(row.nip || row['NIP'] || row['Nomor Induk Pegawai'] || '').trim();
-          const bidang = String(row.bidang || row['Bidang / Unit Kerja'] || row['Bidang'] || row['Unit Kerja'] || '').trim();
-          const igUsername = String(row.igUsername || row['Username Instagram'] || row['Instagram'] || '').trim();
-          const igUsername2 = String(row.igUsername2 || row['Username Instagram 2'] || row['Instagram 2'] || '').trim();
-          const fbName = String(row.fbName || row['Nama Profil Facebook'] || row['Facebook'] || '').trim();
-          const fbName2 = String(row.fbName2 || row['Nama Profil Facebook 2'] || row['Facebook 2'] || '').trim();
-          const tiktokName = String(row.tiktokName || row['Nama Profil TikTok'] || row['TikTok'] || '').trim();
-          const tiktokName2 = String(row.tiktokName2 || row['Nama Profil TikTok 2'] || row['TikTok 2'] || '').trim();
-
-          if (name && nip) {
-            // Validasi format NIP (18 digit numerik) — bukan blokir, hanya warning
-            // karena NIP lama/asing bisa berbeda format.
-            if (!/^\d{18}$/.test(nip)) {
-              invalidNipCount++;
-            }
-            // Optional fields: on update, skip empty so import partial tidak mengosongkan handle yang sudah ada
-            const optionalFields: Record<string, string> = {};
-            if (bidang) optionalFields.bidang = bidang;
-            if (igUsername) optionalFields.igUsername = igUsername;
-            if (igUsername2) optionalFields.igUsername2 = igUsername2;
-            if (fbName) optionalFields.fbName = fbName;
-            if (fbName2) optionalFields.fbName2 = fbName2;
-            if (tiktokName) optionalFields.tiktokName = tiktokName;
-            if (tiktokName2) optionalFields.tiktokName2 = tiktokName2;
-
-            // Check if it exists in the current database (hanya NIP, bukan nama)
-            const existingEmployee = employees.find(
-              emp => emp.nip === nip
-            );
-
-            if (existingEmployee) {
-              const docRef = dinasDoc(db, user.uid, 'employees', existingEmployee.id);
-              batch.set(docRef, {
-                name,
-                nip,
-                ...optionalFields,
-                updatedAt: serverTimestamp()
-              }, { merge: true });
-              updatedCount++;
-            } else if (newlyAddedNips.has(nip)) {
-              const newDocRef = newlyAddedNips.get(nip);
-              batch.set(newDocRef, {
-                name,
-                nip,
-                ...optionalFields,
-                updatedAt: serverTimestamp()
-              }, { merge: true });
-            } else {
-              const newDocRef = doc(employeesRef);
-              batch.set(newDocRef, {
-                name,
-                nip,
-                bidang: bidang || '',
-                igUsername: igUsername || '',
-                igUsername2: igUsername2 || '',
-                fbName: fbName || '',
-                fbName2: fbName2 || '',
-                tiktokName: tiktokName || '',
-                tiktokName2: tiktokName2 || '',
-                createdAt: serverTimestamp()
-              });
-              newlyAddedNips.set(nip, newDocRef);
-              newCount++;
-            }
-            chunkCount++;
-            successCount++;
-          }
-        }
-
-        if (chunkCount > 0) {
-          await batch.commit();
+          successCount++;
         }
       }
+
+      if (successCount > 0) await batch.commit();
 
       if (successCount > 0) {
         const base = `Berhasil memproses data: ${newCount} ditambahkan, ${updatedCount} diperbarui`;

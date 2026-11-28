@@ -34,6 +34,7 @@ export const IPC = {
   scrapeNavigate: 'reso:scrape:navigate',
   scrapeBrowserOwnProfile: 'reso:scrape:browser-own-profile',
   scrapeCaptureStatus: 'reso:scrape:capture-status',
+  scrapeHandoffError: 'reso:scrape:handoff-error',
   scrapeBrowserBack: 'reso:scrape:browser-back',
   scrapeBrowserForward: 'reso:scrape:browser-forward',
   scrapeBrowserReload: 'reso:scrape:browser-reload',
@@ -63,9 +64,17 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 // ===================== Validasi payload data (renderer → main) =====================
 
 const MAX_TEXT = 4000
+/** Rekap harian ≈ 10 tahun; teks mentah ±5000 username. */
+export const MAX_DAILY_ROWS = 3660
+export const MAX_RAW_TEXT = 200_000
+export const MAX_LIST_ITEMS = 5000
 
 function str(v: unknown): string {
   return typeof v === 'string' ? v : ''
+}
+
+function limitedStr(v: unknown, max: number): string {
+  return str(v).slice(0, max)
 }
 
 function optStr(v: unknown): string | undefined {
@@ -117,8 +126,10 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 export function parseDate(v: unknown): string | null {
   const s = typeof v === 'string' ? v.trim() : ''
   if (!DATE_RE.test(s)) return null
-  const ms = Date.parse(`${s}T00:00:00Z`)
-  if (!Number.isFinite(ms)) return null
+  // Date.parse menormalkan tanggal mustahil (2026-02-30 → 1 Maret).
+  const parsed = new Date(`${s}T00:00:00Z`)
+  if (!Number.isFinite(parsed.getTime())) return null
+  if (parsed.toISOString().slice(0, 10) !== s) return null
   return s
 }
 
@@ -126,8 +137,11 @@ export function parseDate(v: unknown): string | null {
 export function parseDailyPatch(v: unknown): Partial<import('../../src/shared/types').DailyEngagement> {
   if (!isRecord(v)) return {}
   const out: Record<string, unknown> = {}
-  for (const key of ['igRawText', 'fbRawText', 'tiktokRawText', 'autoFilledAt', 'verifiedAt']) {
-    if (key in v) out[key] = v[key] === null ? null : str(v[key])
+  for (const key of ['igRawText', 'fbRawText', 'tiktokRawText']) {
+    if (key in v) out[key] = v[key] === null ? null : limitedStr(v[key], MAX_RAW_TEXT)
+  }
+  for (const key of ['autoFilledAt', 'verifiedAt']) {
+    if (key in v) out[key] = v[key] === null ? null : limitedStr(v[key], MAX_TEXT)
   }
   for (const key of [
     'igEngagedEmployeeIds',
@@ -135,10 +149,11 @@ export function parseDailyPatch(v: unknown): Partial<import('../../src/shared/ty
     'tiktokEngagedEmployeeIds',
     'postedAt',
   ]) {
-    if (key in v) out[key] = strArray(v[key])
+    if (key in v) out[key] = strArray(v[key]).slice(0, MAX_LIST_ITEMS)
   }
   if ('unmatchedNames' in v && Array.isArray(v.unmatchedNames)) {
     out.unmatchedNames = (v.unmatchedNames as unknown[])
+      .slice(0, MAX_LIST_ITEMS)
       .filter(isRecord)
       .map((u) => ({ name: str(u.name), platform: str(u.platform) }))
       .filter((u) => u.name && (u.platform === 'ig' || u.platform === 'fb' || u.platform === 'tiktok'))

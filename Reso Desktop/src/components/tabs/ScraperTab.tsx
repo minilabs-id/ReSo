@@ -324,8 +324,10 @@ export default function ScraperPanel({ onOpenCalendar }: ScraperPanelProps) {
 
   const stop = useCallback(async () => {
     if (!isElectron) return;
-    await applyScrapeEvent(platform, { type: 'STOP' });
-  }, [platform]);
+    const runId = states[platform].runId;
+    if (!runId) return;
+    await applyScrapeEvent(platform, { type: 'STOP', runId });
+  }, [platform, states]);
 
   return (
     <div className="p-4 lg:p-5 space-y-3 max-w-[1400px]">

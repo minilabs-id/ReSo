@@ -22,6 +22,11 @@ const api = {
       ipcRenderer.invoke(IPC.scrapeBrowserOwnProfile, platform),
     captureStatus: (platform: string): Promise<{ installed: boolean; error?: string }> =>
       ipcRenderer.invoke(IPC.scrapeCaptureStatus, platform),
+    onHandoffError: (cb: (payload: { platform: string; error: string }) => void): (() => void) => {
+      const listener = (_e: unknown, payload: { platform: string; error: string }) => cb(payload)
+      ipcRenderer.on(IPC.scrapeHandoffError, listener)
+      return () => ipcRenderer.removeListener(IPC.scrapeHandoffError, listener)
+    },
     back: (platform: string): Promise<boolean> => ipcRenderer.invoke(IPC.scrapeBrowserBack, platform),
     forward: (platform: string): Promise<boolean> =>
       ipcRenderer.invoke(IPC.scrapeBrowserForward, platform),

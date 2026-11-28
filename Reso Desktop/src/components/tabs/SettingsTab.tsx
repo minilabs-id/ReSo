@@ -81,6 +81,8 @@ export const SettingsTab: React.FC = () => {
     employees: LocalEmployee[];
     daily: LocalDaily[];
     settings?: Record<string, unknown>;
+    legacySettings?: Record<string, unknown>;
+    schemaVersion?: number;
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -150,6 +152,8 @@ export const SettingsTab: React.FC = () => {
         employees?: unknown;
         daily?: unknown;
         settings?: unknown;
+        legacySettings?: unknown;
+        schemaVersion?: unknown;
       };
       if (!Array.isArray(parsed.employees) || !Array.isArray(parsed.daily)) {
         toast.error('Format tidak valid — berkas harus berisi "employees" dan "daily".');
@@ -161,6 +165,10 @@ export const SettingsTab: React.FC = () => {
         settings: parsed.settings && typeof parsed.settings === 'object'
           ? (parsed.settings as Record<string, unknown>)
           : undefined,
+        legacySettings: parsed.legacySettings && typeof parsed.legacySettings === 'object'
+          ? (parsed.legacySettings as Record<string, unknown>)
+          : undefined,
+        schemaVersion: typeof parsed.schemaVersion === 'number' ? parsed.schemaVersion : undefined,
       });
       setImportConfirm(true);
     } catch {

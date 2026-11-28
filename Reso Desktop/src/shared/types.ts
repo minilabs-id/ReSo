@@ -10,23 +10,29 @@ export type Platform = 'facebook' | 'tiktok' | 'instagram'
 /** Status run — mencerminkan lifecycle engine lama (background.js). */
 export type RunStatus = 'idle' | 'running' | 'done' | 'stopped' | 'error'
 
-export type StopReason =
-  | 'complete'
-  | 'idle'
-  | 'stopped'
-  | 'timeout'
-  | 'incomplete'
-  | 'error'
-  | 'rate_limit'
-  | 'blocked'
-  | 'checkpoint'
-  | 'no_template'
-  | 'no_video'
-  | 'no_login'
-  | 'no_media'
-  | 'live'
-  | 'synthetic_failed'
-  | string
+export const STOP_REASONS = [
+  'complete',
+  'idle',
+  'stopped',
+  'timeout',
+  'incomplete',
+  'error',
+  'rate_limit',
+  'blocked',
+  'checkpoint',
+  'no_template',
+  'no_video',
+  'no_login',
+  'no_media',
+  'live',
+  'synthetic_failed',
+] as const
+
+export type StopReason = (typeof STOP_REASONS)[number] | string
+
+export function isStopReason(v: unknown): v is StopReason {
+  return typeof v === 'string' && (STOP_REASONS as readonly string[]).includes(v)
+}
 
 export interface NameState {
   status: RunStatus

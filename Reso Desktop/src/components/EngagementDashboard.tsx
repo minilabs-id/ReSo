@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { getLocalISODate, parseLocalISODate } from '../lib/date';
 import {
   onScrapeHandoff,
+  onScrapeHandoffError,
   getUpdateState,
   onUpdateStateChanged,
   checkForUpdates,
@@ -76,6 +77,15 @@ export default function EngagementDashboard() {
         toast.success(
           `${p.added} ${platform} masuk rekap ${p.date} · ${p.matched} terpetakan${p.unmatched ? ` · ${p.unmatched} belum` : ''}`
         );
+      }),
+    []
+  );
+
+  useEffect(
+    () =>
+      onScrapeHandoffError((p) => {
+        const platform = p.platform === 'facebook' ? 'Facebook' : p.platform === 'instagram' ? 'Instagram' : 'TikTok';
+        toast.error(`Gagal menyimpan hasil ${platform} ke rekap: ${p.error}`);
       }),
     []
   );

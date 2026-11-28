@@ -63,9 +63,21 @@ interface ResoDataBridge {
   listDailyRange: (from: string, to: string) => Promise<LocalDaily[]>
   upsertDaily: (date: string, patch: Partial<LocalDaily>) => Promise<LocalDaily | null>
   stats: () => Promise<LocalDbStats>
-  exportAll: () => Promise<{ employees: LocalEmployee[]; daily: LocalDaily[] }>
+  exportAll: () => Promise<{
+    employees: LocalEmployee[]
+    daily: LocalDaily[]
+    settings?: Record<string, unknown>
+    legacySettings?: Record<string, unknown>
+    schemaVersion?: number
+  }>
   importAll: (
-    payload: { employees: LocalEmployee[]; daily: LocalDaily[] }
+    payload: {
+      employees: LocalEmployee[]
+      daily: LocalDaily[]
+      settings?: Record<string, unknown>
+      legacySettings?: Record<string, unknown>
+      schemaVersion?: number
+    }
   ) => Promise<{ ok: boolean; stats?: LocalDbStats; reason?: string }>
   /** Dokumen pengaturan tunggal (settings/{id}) — pengganti Firestore. */
   getAllSettings?: () => Promise<Record<string, unknown>>
@@ -94,6 +106,7 @@ export interface ResoScrapeBrowserBridge {
   forward: (platform: string) => Promise<boolean>
   reload: (platform: string) => Promise<boolean>
   navState: (platform: string) => Promise<{ canBack: boolean; canForward: boolean }>
+  onHandoffError?: (cb: (payload: { platform: string; error: string }) => void) => () => void
   onNavigated?: (cb: (payload: { platform: string; url: string }) => void) => () => void
   onLoading?: (cb: (payload: { platform: string; loading: boolean }) => void) => () => void
 }
@@ -146,6 +159,7 @@ declare global {
           cb: (payload: { platform: string; state: NameState }) => void
         ) => () => void
         onHandoff: (cb: (payload: ScrapeHandoffPayload) => void) => () => void
+        onHandoffError?: (cb: (payload: { platform: string; error: string }) => void) => () => void
       }
     }
   }
@@ -386,6 +400,12 @@ export function onScrapeStateChanged(
 export function onScrapeHandoff(cb: (payload: ScrapeHandoffPayload) => void): () => void {
   if (!isElectron) return () => {}
   return window.reso!.scrape.onHandoff(cb)
+}
+
+/** Gagal menulis hasil scraping ke rekap — ditampilkan sebagai error. */
+export function onScrapeHandoffError(cb: (payload: { platform: string; error: string }) => void): () => void {
+  if (!isElectron) return () => {}
+  return window.reso!.scrape.onHandoffError?.(cb) ?? (() => {})
 }
 
 // ===================== Auto-update (GitHub Releases) =====================

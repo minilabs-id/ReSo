@@ -9,7 +9,7 @@
 import { mergeNames } from './normalize'
 import { reasonToMessage } from './messages'
 import { applyStatePatch, defaultStateFor, isRunStatus, MAX_NAMES } from './state'
-import type { NameState, Platform, RunStatus, StopReason } from './types'
+import { isStopReason, type NameState, type Platform, type RunStatus, type StopReason } from './types'
 
 /** Pesan dari engine/UI yang menentukan transisi. */
 export type RunEvent =
@@ -18,7 +18,7 @@ export type RunEvent =
   | { type: 'SET_TARGET'; hint: string }
   | { type: 'PROGRESS'; runId: string; names: string[] }
   | { type: 'DONE'; runId: string; reason: StopReason; names?: string[]; note?: string }
-  | { type: 'STOP'; reason?: StopReason }
+  | { type: 'STOP'; runId?: string; reason?: StopReason }
   | { type: 'FAIL'; runId?: string; message: string }
 
 export interface TransitionResult {
@@ -110,6 +110,8 @@ export function reduce(
 
   if (event.type === 'STOP') {
     if (!isActive(state)) return { state, changed: false }
+    // STOP basi (run lama) tidak boleh menghentikan run yang sedang aktif.
+    if (!event.runId || event.runId !== state.runId) return { state, changed: false }
     const reason: StopReason = event.reason ?? 'stopped'
     return {
       state: {
@@ -125,7 +127,8 @@ export function reduce(
   }
 
   // FAIL
-  if (event.runId && event.runId !== state.runId) return { state, changed: false }
+  if (!isActive(state)) return { state, changed: false }
+  if (event.runId !== state.runId) return { state, changed: false }
   return {
     state: {
       ...state,
@@ -165,7 +168,8 @@ export function parseRunEvent(v: unknown): RunEvent | null {
   }
   if (type === 'DONE') {
     if (typeof o['runId'] !== 'string') return null
-    const reason = typeof o['reason'] === 'string' ? o['reason'] : 'complete'
+    const reason: StopReason =
+      o['reason'] === undefined ? 'complete' : isStopReason(o['reason']) ? o['reason'] : 'error'
     const names = Array.isArray(o['names'])
       ? o['names'].filter((x): x is string => typeof x === 'string').slice(0, MAX_NAMES)
       : undefined
@@ -173,13 +177,14 @@ export function parseRunEvent(v: unknown): RunEvent | null {
     return { type: 'DONE', runId: o['runId'], reason, names, ...(note ? { note } : {}) }
   }
   if (type === 'STOP') {
-    const reason = typeof o['reason'] === 'string' ? o['reason'] : undefined
-    return { type: 'STOP', reason }
+    const reason = isStopReason(o['reason']) ? o['reason'] : undefined
+    const runId = typeof o['runId'] === 'string' && o['runId'] ? o['runId'] : undefined
+    return { type: 'STOP', ...(runId ? { runId } : {}), ...(reason ? { reason } : {}) }
   }
   if (type === 'FAIL') {
     const message = typeof o['message'] === 'string' ? o['message'].slice(0, 500) : 'error'
-    const runId = typeof o['runId'] === 'string' ? o['runId'] : undefined
-    return { type: 'FAIL', message, runId }
+    if (typeof o['runId'] !== 'string' || !o['runId']) return null
+    return { type: 'FAIL', message, runId: o['runId'] }
   }
   return null
 }

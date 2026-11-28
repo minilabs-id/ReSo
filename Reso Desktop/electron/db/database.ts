@@ -50,6 +50,16 @@ export function openDb(): BetterSqlite3.Database {
   conn.pragma('journal_mode = WAL')
   conn.pragma('foreign_keys = ON')
   conn.exec(SCHEMA_SQL)
+  const stored = conn.prepare(`SELECT value FROM meta WHERE key = 'schema_version'`).get() as
+    | { value: string }
+    | undefined
+  const storedVersion = Number.parseInt(String(stored?.value ?? ''), 10)
+  if (Number.isFinite(storedVersion) && storedVersion > SCHEMA_VERSION) {
+    conn.close()
+    throw new Error(
+      `Database berasal dari versi skema ${storedVersion} yang lebih baru daripada aplikasi (${SCHEMA_VERSION}). Perbarui aplikasi.`
+    )
+  }
   conn
     .prepare(`INSERT INTO meta (key, value) VALUES ('schema_version', ?)
               ON CONFLICT(key) DO UPDATE SET value = excluded.value`)

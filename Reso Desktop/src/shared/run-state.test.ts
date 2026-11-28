@@ -77,11 +77,15 @@ eq(again.state.names, ['Andi'], 'nama lama tidak hilang')
 s = run([
   { type: 'START', runId: 'r1', includeReplies: true },
   { type: 'PROGRESS', runId: 'r1', names: ['Andi'] },
-  { type: 'STOP' },
+  { type: 'STOP', runId: 'r1' },
 ])
 eq(s.status, 'stopped', 'STOP → stopped')
 eq(s.names, ['Andi'], 'STOP mempertahankan hasil')
-eq(reduce('facebook', s, { type: 'STOP' }).changed, false, 'STOP saat idle diabaikan')
+eq(reduce('facebook', s, { type: 'STOP', runId: 'r1' }).changed, false, 'STOP saat idle diabaikan')
+ok(
+  reduce('facebook', run([{ type: 'START', runId: 'r1', includeReplies: true }]), { type: 'STOP', runId: 'lame' }).changed === false,
+  'STOP runId basi tidak menghentikan run aktif'
+)
 
 // --- DONE dengan reason khusus ---
 eq(run([{ type: 'START', runId: 'r1', includeReplies: false }, { type: 'DONE', runId: 'r1', reason: 'stopped' }]).status, 'stopped', 'DONE reason stopped → status stopped')
@@ -97,7 +101,15 @@ s = run([{ type: 'START', runId: 'r1', includeReplies: true }, { type: 'FAIL', r
 eq(s.status, 'error', 'FAIL → error')
 eq(s.message, 'boom', 'FAIL memakai pesan error')
 eq(reduce('facebook', s, { type: 'FAIL', runId: 'lain', message: 'x' }).changed, false, 'FAIL runId beda ditolak')
-eq(reduce('facebook', s, { type: 'FAIL', message: 'y' }).changed, true, 'FAIL tanpa runId tetap diterapkan')
+ok(parseRunEvent({ type: 'FAIL', message: 'y' }) === null, 'FAIL tanpa runId ditolak parser')
+ok(
+  run([
+    { type: 'START', runId: 'r1', includeReplies: true },
+    { type: 'FAIL', runId: 'l1', message: 'lamba' },
+    { type: 'PROGRESS', runId: 'r1', names: ['Andi'] },
+  ]).status === 'running',
+  'FAIL basi tidak menghentikan run aktif'
+)
 
 // --- START membersihkan target lama ---
 s = reduce('facebook', { ...defaultStateFor('facebook'), postHint: 'https://lama' }, { type: 'START', runId: 'r1', includeReplies: true }).state
@@ -119,8 +131,9 @@ eq(parseRunEvent({ type: 'START' }), null, 'parse START tanpa runId')
 eq(parseRunEvent({ type: 'START', runId: 'r', includeReplies: 'yes' }), { type: 'START', runId: 'r', includeReplies: false }, 'parse START paksa boolean')
 eq(parseRunEvent({ type: 'PROGRESS', runId: 'r', names: ['a', 1, null] }), { type: 'PROGRESS', runId: 'r', names: ['a'] }, 'parse PROGRESS saring non-string')
 eq(parseRunEvent({ type: 'DONE', runId: 'r' }), { type: 'DONE', runId: 'r', reason: 'complete', names: undefined }, 'parse DONE default complete')
-eq(parseRunEvent({ type: 'FAIL', message: 'x'.repeat(900) })?.type, 'FAIL', 'parse FAIL diterima')
-ok((parseRunEvent({ type: 'FAIL', message: 'x'.repeat(900) }) as { message: string }).message.length === 500, 'parse FAIL memotong pesan')
+eq(parseRunEvent({ type: 'FAIL', runId: 'r', message: 'x'.repeat(900) })?.type, 'FAIL', 'parse FAIL diterima')
+ok((parseRunEvent({ type: 'FAIL', runId: 'r', message: 'x'.repeat(900) }) as { message: string }).message.length === 500, 'parse FAIL memotong pesan')
+ok(parseRunEvent({ type: 'FAIL', message: 'tanpa runId' }) === null, 'parse FAIL tanpa runId ditolak')
 
 // --- opsi & target (sumber kebenaran panel Ambil Nama) ---
 s = run([{ type: 'SET_OPTIONS', includeReplies: true }])

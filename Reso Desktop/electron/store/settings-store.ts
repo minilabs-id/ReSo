@@ -61,10 +61,7 @@ export function resetSettings(): ResoSettings {
  */
 export function restoreSettings(raw: unknown): ResoSettings {
   const clean = { ...SETTINGS_DEFAULTS, ...sanitizeSettingsPatch(raw) }
-  const s = getStore()
-  s.clear()
-  for (const [key, value] of Object.entries(clean)) {
-    s.set(key as keyof ResoSettings, value as ResoSettings[keyof ResoSettings])
-  }
+  // Satu penulisan file (atomik via conf/atomically) — bukan clear + loop set.
+  getStore().store = clean
   return getSettings()
 }
