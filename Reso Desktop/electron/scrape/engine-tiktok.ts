@@ -26,6 +26,10 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null
 }
 
+/** Cooldown lokal setelah TikTok terdeteksi menyembunyikan komentar. */
+const THROTTLE_COOLDOWN_MS = 10 * 60 * 1000
+let lastThrottledAt = 0
+
 /**
  * Ambil semua username dari satu body JSON `/api/comment/list`.
  *
@@ -412,6 +416,7 @@ export async function runTikTokCapture(
       }
     })
 
+  let throttleSuspected = false
   const finish = (reason: CaptureResult['reason'], detail?: string): CaptureResult => {
     let finalReason = reason
     let finalDetail = detail
@@ -421,6 +426,12 @@ export async function runTikTokCapture(
     } else if (maxStatus === 403) {
       finalReason = 'blocked'
       finalDetail = 'Akses komentar ditolak TikTok (403) — periksa login/checkpoint di browser.'
+    } else if (throttleSuspected && finalReason === 'complete' && names.length === 0) {
+      lastThrottledAt = Date.now()
+      finalReason = 'blocked'
+      finalDetail =
+        'TikTok menyembunyikan komentar dari sesi/IP ini (bukan panel kosong). ' +
+        'Ganti jaringan/akun atau tunggu ±10 menit lalu coba lagi.'
     }
     return { names: mergeNames([], names, 'tiktok'), mode, reason: finalReason, detail: finalDetail }
   }
@@ -476,6 +487,13 @@ export async function runTikTokCapture(
 
   if (!req.videoUrl) return finish('no_video')
   if (isTikTokLoginWall(req.videoUrl)) return finish('no_login')
+  if (lastThrottledAt > 0 && Date.now() - lastThrottledAt < THROTTLE_COOLDOWN_MS) {
+    const sisa = Math.ceil((THROTTLE_COOLDOWN_MS - (Date.now() - lastThrottledAt)) / 60_000)
+    return finish(
+      'rate_limit',
+      `Cooldown pembatasan TikTok masih aktif (~${sisa} menit). Ganti jaringan/akun atau tunggu.`
+    )
+  }
 
   // Satu sesi CDP untuk seluruh run: klik trusted, wheel scroll, dan — yang
   // terpenting — membaca body JSON /api/comment/list. DOM panel TikTok
@@ -559,6 +577,16 @@ export async function runTikTokCapture(
     for (let round = 0; round < req.maxScrollRounds; round++) {
       if (req.signal.aborted) return finish('stopped')
       if (Date.now() > deadline) return finish('timeout')
+
+      // Video menyatakan punya komentar, tapi tidak ada satu pun respons API
+      // maupun kartu DOM → TikTok menyembunyikan data dari sesi ini.
+      if (!throttleSuspected && names.length === 0 && apiPages === 0) {
+        const label = await runJs<string>(
+          `document.querySelector('[data-e2e="comment-icon"]')?.getAttribute('aria-label') || ''`
+        ).catch(() => '')
+        const count = label.match(/(\d+)\s*comments?/i)
+        if (count && Number(count[1]) > 0) throttleSuspected = true
+      }
 
       let found: string[] = []
       try {
